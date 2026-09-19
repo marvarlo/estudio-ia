@@ -20,11 +20,14 @@ DEFAULT_MODEL = "gemma4-it-e4b-FLM"
 
 
 class LemonadeTextAdapter:
-    # 180s default: la generacion de canon/cast pide varios miles de tokens
-    # JSON estructurados, y un modelo local (NPU/CPU) puede tardar bastante
-    # mas que una llamada de chat corta -- el health_check usa su propio
-    # cliente de 5s, no este timeout.
-    def __init__(self, base_url: str, model: str = DEFAULT_MODEL, timeout: float = 180.0) -> None:
+    # 300s default: la generacion de canon/cast/prosa/hoja-de-produccion pide
+    # varios miles de tokens JSON estructurados con un prompt de entrada
+    # largo (la derivacion de hoja de produccion manda el capitulo entero de
+    # prosa), y un modelo local (NPU/CPU) puede tardar bastante mas que una
+    # llamada de chat corta -- 180s no alcanzo en vivo para ese caso
+    # (timeout real observado). El health_check usa su propio cliente de
+    # 5s, no este timeout.
+    def __init__(self, base_url: str, model: str = DEFAULT_MODEL, timeout: float = 300.0) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._timeout = timeout

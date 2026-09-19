@@ -32,6 +32,11 @@ export function ChapterPage() {
   const [batchMessage, setBatchMessage] = useState<string | null>(null)
   const [renderBusy, setRenderBusy] = useState(false)
   const [renderMessage, setRenderMessage] = useState<string | null>(null)
+  const [prose, setProse] = useState("")
+  const [proseSavedPath, setProseSavedPath] = useState<string | null>(null)
+  const [proseOpen, setProseOpen] = useState(false)
+  const [proseBusy, setProseBusy] = useState<"write" | "save" | "derive" | null>(null)
+  const [proseMessage, setProseMessage] = useState<string | null>(null)
 
   const load = useCallback(() => {
     if (!chapterId) return
@@ -43,6 +48,13 @@ export function ChapterPage() {
       })
       .catch((err) => setError(String(err.message ?? err)))
     api.lintChapter(chapterId).then(setLint).catch(() => {})
+    api
+      .getProse(chapterId)
+      .then((result) => {
+        setProse(result.text)
+        setProseSavedPath(result.path)
+      })
+      .catch(() => {})
   }, [chapterId])
 
   useEffect(load, [load])
@@ -115,6 +127,59 @@ export function ChapterPage() {
       setExportMessage(`Exportado a ${result.path}`)
     } catch (err) {
       setError(String((err as Error).message ?? err))
+    }
+  }
+
+  async function handleWriteProse() {
+    if (!chapterId) return
+    setProseBusy("write")
+    setError(null)
+    setProseMessage(null)
+    try {
+      const job = await api.generateProse(chapterId)
+      const finished = await pollJob(job.id)
+      if (finished.status === "failed") throw new Error(finished.error ?? "La escritura fallo")
+      const result = await api.getProse(chapterId)
+      setProse(result.text)
+      setProseSavedPath(result.path)
+      setProseMessage("Prosa escrita. Revisala antes de derivar la hoja de produccion.")
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    } finally {
+      setProseBusy(null)
+    }
+  }
+
+  async function handleSaveProse() {
+    if (!chapterId) return
+    setProseBusy("save")
+    setError(null)
+    try {
+      const result = await api.updateProse(chapterId, prose)
+      setProseSavedPath(result.path)
+      setProseMessage("Prosa guardada.")
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    } finally {
+      setProseBusy(null)
+    }
+  }
+
+  async function handleDeriveSheet() {
+    if (!chapterId) return
+    setProseBusy("derive")
+    setError(null)
+    setProseMessage(null)
+    try {
+      const job = await api.deriveProductionSheet(chapterId)
+      const finished = await pollJob(job.id)
+      if (finished.status === "failed") throw new Error(finished.error ?? "La derivacion fallo")
+      setProseMessage("Hoja de produccion derivada -- revisa los shots abajo.")
+      load()
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    } finally {
+      setProseBusy(null)
     }
   }
 
@@ -252,6 +317,56 @@ export function ChapterPage() {
           ))}
         </div>
       )}
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+        <button
+          onClick={() => setProseOpen((v) => !v)}
+          className="flex w-full items-center justify-between text-left text-sm font-medium text-zinc-200"
+        >
+          <span>Prosa del capitulo {prose ? "" : "(sin escribir)"}</span>
+          <span className="text-xs text-zinc-500">{proseOpen ? "ocultar ▲" : "mostrar ▼"}</span>
+        </button>
+        {proseOpen && (
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-zinc-500">
+              Escribi (o revisa/corregi) la prosa completa del capitulo antes de derivar la hoja de produccion --
+              corregir tono o ritmo en texto es mas barato que descubrirlo despues de generar assets.
+            </p>
+            <textarea
+              value={prose}
+              onChange={(e) => setProse(e.target.value)}
+              rows={12}
+              placeholder="Todavia no hay prosa -- generala o pegala aca."
+              className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm leading-relaxed"
+            />
+            {proseMessage && <p className="text-xs text-emerald-300">{proseMessage}</p>}
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={handleWriteProse}
+                disabled={proseBusy !== null}
+                className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+              >
+                {proseBusy === "write" ? "Escribiendo..." : prose ? "Re-escribir con IA" : "Escribir con IA"}
+              </button>
+              <button
+                onClick={handleSaveProse}
+                disabled={proseBusy !== null}
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800 disabled:opacity-50"
+              >
+                {proseBusy === "save" ? "Guardando..." : "Guardar cambios"}
+              </button>
+              <button
+                onClick={handleDeriveSheet}
+                disabled={proseBusy !== null || !proseSavedPath}
+                className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+                title={!proseSavedPath ? "Escribi o guarda la prosa primero" : undefined}
+              >
+                {proseBusy === "derive" ? "Derivando..." : "Derivar hoja de produccion"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3 text-xs">
         <span className="text-zinc-400">Generar por lote:</span>

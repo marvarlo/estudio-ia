@@ -17,6 +17,7 @@ export type Project = {
   num_episodios: number | null
   duracion_objetivo_min: number | null
   root_path: string
+  season_asset_path: string | null
 }
 
 export type Chapter = {
@@ -231,6 +232,7 @@ export const api = {
   createProject: (data: { name: string; estilo_visual?: string; tono?: string; plataformas?: string[] }) =>
     request<Project>("/api/projects", { method: "POST", body: JSON.stringify(data) }),
   getProject: (projectId: string) => request<ProjectDetail>(`/api/projects/${projectId}`),
+  renderSeason: (projectId: string) => request<Job>(`/api/projects/${projectId}/season:render`, { method: "POST" }),
   importProject: (path: string) =>
     request<ImportSummary>("/api/projects/import", { method: "POST", body: JSON.stringify({ path }) }),
 
@@ -291,6 +293,24 @@ export const api = {
     }),
   lintChapter: (chapterId: string) => request<LintWarning[]>(`/api/chapters/${chapterId}/lint`),
   exportChapter: (chapterId: string) => request<{ path: string }>(`/api/chapters/${chapterId}/export`, { method: "POST" }),
+
+  // Prosa + derivacion de hoja de produccion (hueco de la fase 1)
+  getProse: (chapterId: string) => request<{ text: string; path: string | null }>(`/api/chapters/${chapterId}/prose`),
+  updateProse: (chapterId: string, text: string) =>
+    request<{ text: string; path: string | null }>(`/api/chapters/${chapterId}/prose`, {
+      method: "PUT",
+      body: JSON.stringify({ text }),
+    }),
+  generateProse: (chapterId: string, providerId = "lemonade-text") =>
+    request<Job>(`/api/chapters/${chapterId}/prose:generate`, {
+      method: "POST",
+      body: JSON.stringify({ provider_id: providerId }),
+    }),
+  deriveProductionSheet: (chapterId: string, providerId = "lemonade-text") =>
+    request<Job>(`/api/chapters/${chapterId}/production-sheet:derive`, {
+      method: "POST",
+      body: JSON.stringify({ provider_id: providerId }),
+    }),
 
   // Generacion por shot (fase 2): imagen / audio / video, jobs, versionado
   generateShotImage: (shotId: string, providerId: string, select = true) =>

@@ -75,9 +75,12 @@ class ProjectOut(BaseModel):
     num_episodios: int | None
     duracion_objetivo_min: int | None
     root_path: str
+    season_asset_path: str | None = None
 
     @classmethod
-    def from_domain(cls, project: Project) -> "ProjectOut":
+    def from_domain(cls, project: Project, assets_by_id: dict[str, Asset] | None = None) -> "ProjectOut":
+        assets_by_id = assets_by_id or {}
+        season_asset = assets_by_id.get(project.selected_season_asset_id) if project.selected_season_asset_id else None
         return cls(
             id=project.id,
             slug=project.slug,
@@ -90,6 +93,7 @@ class ProjectOut(BaseModel):
             num_episodios=project.num_episodios,
             duracion_objetivo_min=project.duracion_objetivo_min,
             root_path=str(project.root_path),
+            season_asset_path=str(season_asset.path) if season_asset else None,
         )
 
 
@@ -215,10 +219,11 @@ class ProjectDetailOut(BaseModel):
 
     @classmethod
     def from_domain(cls, detail: ProjectDetail) -> "ProjectDetailOut":
+        assets_by_id = {a.id: a for a in detail.assets}
         return cls(
-            project=ProjectOut.from_domain(detail.project),
+            project=ProjectOut.from_domain(detail.project, assets_by_id),
             logline=detail.canon.logline if detail.canon else "",
-            chapters=[ChapterOut.from_domain(c) for c in detail.chapters],
+            chapters=[ChapterOut.from_domain(c, assets_by_id) for c in detail.chapters],
             characters=[CharacterOut.from_domain(c) for c in detail.characters],
             locations=[LocationOut.from_domain(l) for l in detail.locations],
             voices=[VoiceOut.from_domain(v) for v in detail.voices],
@@ -353,6 +358,23 @@ class LintWarningOut(BaseModel):
 
 class ExportOut(BaseModel):
     path: str
+
+
+class ProseGenerateRequest(BaseModel):
+    provider_id: str = "lemonade-text"
+
+
+class ProseOut(BaseModel):
+    text: str
+    path: str | None
+
+
+class ProseUpdateRequest(BaseModel):
+    text: str
+
+
+class ProductionSheetDeriveRequest(BaseModel):
+    provider_id: str = "lemonade-text"
 
 
 # ---------------------------------------------------------------------------

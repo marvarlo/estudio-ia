@@ -21,6 +21,7 @@ class ProjectDetail:
     characters: list[Character]
     locations: list[Location]
     voices: list[Voice]
+    assets: list[Asset]
 
 
 class ListProjectsUseCase:
@@ -46,6 +47,7 @@ class GetProjectDetailUseCase:
             characters=self._repository.list_characters(project_id),
             locations=self._repository.list_locations(project_id),
             voices=self._repository.list_voices(project_id),
+            assets=self._repository.list_assets(project_id),
         )
 
 

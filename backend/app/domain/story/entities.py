@@ -27,6 +27,7 @@ class Project:
     num_episodios: int | None = None
     duracion_objetivo_min: int | None = None
     created_at: datetime | None = None
+    selected_season_asset_id: str | None = None
 
 
 @dataclass

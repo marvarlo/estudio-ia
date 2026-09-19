@@ -53,6 +53,7 @@ def _project_to_row(project: Project) -> ProjectRow:
         num_episodios=project.num_episodios,
         duracion_objetivo_min=project.duracion_objetivo_min,
         created_at=project.created_at,
+        selected_season_asset_id=project.selected_season_asset_id,
     )
 
 
@@ -70,6 +71,7 @@ def _row_to_project(row: ProjectRow) -> Project:
         num_episodios=row.num_episodios,
         duracion_objetivo_min=row.duracion_objetivo_min,
         created_at=row.created_at,
+        selected_season_asset_id=row.selected_season_asset_id,
     )
 
 
