@@ -11,7 +11,7 @@ hexagonal. El plan completo, con las decisiones de arquitectura y la hoja de
 ruta por fases, vive en el doc **"Estudio IA — Arquitectura y plan de
 migración"**.
 
-## Estado: Fase 2 (Storyboard)
+## Estado: Fase 3 (Render)
 
 Lo que ya funciona:
 
@@ -37,17 +37,27 @@ Lo que ya funciona:
   referencias multimodales para consistencia de personaje/escenario),
   **ElevenLabs** (TTS), y video (**WAN 2.7** lip-sync, **Google Veo 3.1**,
   **Gemini Omni** — experimental, sin confirmar contra la API real).
+- **Fase 3 — Render:** sidecar Remotion en `render/` (ver `render/README.md`)
+  invocado por el backend via `RenderPort`/`RemotionRenderAdapter`, que arma
+  el `timeline.json` de un capítulo a partir de los shots ya generados
+  (imagen+audio, o video con lip-sync si lo hay) midiendo la duración REAL de
+  cada uno; render encolado como `Job` (puede tardar varios minutos, no es
+  una generación puntual); cada render crea un `Asset` de video nuevo sin
+  borrar los anteriores, igual que la regla de versionado de la fase 2; el
+  video final queda reproducible desde la página del capítulo.
 
 Sin credenciales de proveedores cloud en esta máquina, Gemini/ElevenLabs/
 WAN/Veo/Omni están implementados y cubiertos por tests de contrato
 (payloads verificados contra los scripts originales, sin pegarle a la API
-real), pero solo los proveedores Lemonade están probados end-to-end con
-llamadas reales en este entorno.
+real), pero solo los proveedores Lemonade y el render con Remotion (100%
+local, no depende de ninguna cloud) están probados end-to-end con
+ejecuciones reales en este entorno.
 
 Lo que falta (ver la hoja de ruta del doc de arquitectura): escritura de
 prosa completa de capítulos por LLM y derivación automática de la hoja de
-producción desde esa prosa, el sidecar de Remotion (fase 3), y todo el
-pipeline de música (demux, transcripción, sincronización, karaoke — fase 4).
+producción desde esa prosa, el corte de temporada completa (concatenar
+capítulos con separadores, `RenderPort.concat()`), y todo el pipeline de
+música (demux, transcripción, sincronización, karaoke — fase 4).
 
 ## Estructura
 
@@ -55,7 +65,7 @@ pipeline de música (demux, transcripción, sincronización, karaoke — fase 4)
 estudio-ia/
   backend/     FastAPI + SQLite, arquitectura hexagonal (ver backend/app/)
   frontend/    React + TypeScript + Vite + Tailwind
-  render/      placeholder — sidecar Remotion (fase 3)
+  render/      sidecar Remotion (fase 3) -- ver render/README.md
   packages/    placeholder — contratos compartidos (timeline.json, tipos)
   workspace/   datos del usuario (DB local, gitignored)
 ```
@@ -88,6 +98,7 @@ Variables de entorno opcionales (todas tienen default razonable):
 | `GOOGLE_API_KEY` | — | Habilita Veo 3.1 y Gemini Omni (video) |
 | `ESTUDIO_IA_WORKSPACE` | `./workspace` | Dónde vive la base de datos local |
 | `ESTUDIO_IA_STORIES_ROOT` | `../historias` (carpeta hermana) | Dónde se crean los proyectos nuevos |
+| `ESTUDIO_IA_RENDER_DIR` | `../render` (carpeta hermana) | Proyecto Remotion del sidecar de render (fase 3) |
 
 Tests:
 
@@ -108,6 +119,22 @@ npm run dev
 
 Abre `http://localhost:5173`. Espera el backend corriendo en el puerto
 8000 (CORS ya configurado para `localhost:5173`).
+
+### Renderizar un capítulo
+
+Requiere `node`/`npm` (para el sidecar Remotion) y `ffmpeg`/`ffprobe` en el
+PATH. Primera vez:
+
+```bash
+cd render
+npm install   # tambien descarga el chrome-headless-shell de Remotion
+```
+
+Con el backend corriendo, el botón "Renderizar capítulo" de la página de un
+capítulo (o `POST /api/chapters/{id}/render:generate`) arma el
+`timeline.json` a partir de las imágenes/audio ya seleccionados por shot y
+lo renderiza con Remotion -- ver `render/README.md` para el detalle de cómo
+se invoca la CLI.
 
 ### Importar una historia ya producida
 

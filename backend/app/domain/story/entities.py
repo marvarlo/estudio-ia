@@ -59,6 +59,7 @@ class Chapter:
     prosa_path: Path | None = None
     produccion_path: Path | None = None
     estado: ChapterStatus = ChapterStatus.BORRADOR
+    selected_render_asset_id: str | None = None
 
 
 @dataclass

@@ -1,20 +1,61 @@
 # render/
 
-Placeholder para la fase 3 (Render). Hoy el proyecto Remotion vive en un
-repo hermano, `video-prototype/` (fuera de este monorepo), tal como lo dejo
-el skill `historias-fantasia`.
+Sidecar Remotion de Estudio IA (fase 3). Renderiza el video final de un
+capitulo a partir del `timeline.json` que arma el backend
+(`backend/app/application/use_cases/render_chapter.py`) -- ya no lee
+`scenes.json` de disco como el prototipo original en `video-prototype/`
+(fuera de este monorepo).
 
-La fase 3 lo convierte en un sidecar Node invocado por el backend via
-`RenderPort` (ver `backend/app/application/ports/render.py` y la seccion 7
-del doc de arquitectura "Estudio IA — Arquitectura y plan de migracion"):
+## Como se invoca
 
-- Copiar/migrar las composiciones de `video-prototype/src/*.tsx` aca.
-- Reemplazar `scenes.json` leido de disco por `timeline.json` recibido como
-  `inputProps` de `@remotion/renderer`.
-- Envolver `renderMedia` en un pequeno servidor Express/Fastify que el
-  backend Python invoca por HTTP local.
-- Agregar `MusicVideo`, `LyricsVideo`, `Karaoke`, `Short` como composiciones
-  nuevas (fase 4-5).
+El backend (`RemotionRenderAdapter`,
+`backend/app/adapters/outbound/render/remotion_render_adapter.py`) NO usa
+`npx remotion render`: en Windows, invocar `npx` desde un subproceso Python
+falla por un AutoRun de `cmd.exe` roto ("DOSKEY no se reconoce"), nada que
+ver con Remotion. El adaptador va directo al entry point real de la CLI con
+`node.exe`:
 
-No crear nada aca todavia si no es esa fase -- evita que este monorepo
-cargue un `node_modules` de Remotion sin usar.
+```bash
+node node_modules/@remotion/cli/remotion-cli.js render Capitulo salida.mp4 --props=props.json
+```
+
+con la variable de entorno `RENDER_PUBLIC_DIR` apuntando a
+`capitulo-N/assets/` -- las rutas de imagen/audio/video del timeline vienen
+relativas a esa carpeta (via `staticFile()`, igual que `build_scenes.py` del
+skill original las generaba relativas a esa misma carpeta). `props.json`
+tiene la forma `{"timeline": {...}}` (ver `src/Capitulo.tsx`, tipo
+`Timeline`). Cada invocacion es un proceso nuevo, asi que la variable de
+entorno cambia libremente de un capitulo a otro sin estado compartido -- no
+hay bundle ni servidor persistente que mantener.
+
+## Composiciones
+
+- **Capitulo**: la principal. `calculateMetadata` resuelve duracion/
+  resolucion en base al `timeline` recibido (numero de escenas variable por
+  capitulo, a diferencia del prototipo original que asumia un unico
+  `scenes.json` fijo).
+- **Separador** / **Cierre**: piezas sueltas para el corte de TEMPORADA
+  COMPLETA (fase 5) -- se renderizan aparte y se concatenan con
+  `RenderPort.concat()` (ffmpeg, sin recodificar) junto a los mp4 de cada
+  capitulo.
+
+## Desarrollo local
+
+```bash
+npm install   # primera vez -- descarga tambien el chrome-headless-shell de Remotion
+npm run dev   # abre Remotion Studio para inspeccionar las composiciones sueltas
+```
+
+`remotion.config.ts` solo exige `RENDER_PUBLIC_DIR` cuando hay assets reales
+que servir (renderizar "Capitulo" con escenas) -- Remotion Studio arranca
+igual sin la variable para inspeccionar Separador/Cierre.
+
+## Verificado en vivo (fase 3)
+
+Render real de un capitulo completo (52 escenas) de una historia ya
+producida (`la-bruja-del-espejo`, capitulo 1), con imagenes y audio reales
+generados en la fase 2 -- intro con el nombre del proyecto, Ken Burns segun
+la columna "Movimiento Camara", subtitulos quemados con los audio tags
+limpiados, audio real no silencioso, resolucion y duracion tomadas del
+timeline via `calculateMetadata`. Video final servido de vuelta al frontend
+via `/api/media` y reproducible en el navegador.

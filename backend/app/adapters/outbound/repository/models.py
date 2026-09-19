@@ -49,6 +49,7 @@ class ChapterRow(SQLModel, table=True):
     prosa_path: str | None = None
     produccion_path: str | None = None
     estado: str = "borrador"
+    selected_render_asset_id: str | None = None
 
 
 class ShotRow(SQLModel, table=True):
