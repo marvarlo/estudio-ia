@@ -25,6 +25,7 @@ export type Chapter = {
   titulo: string
   estado: "borrador" | "hoja_derivada" | "assets" | "renderizado"
   tiene_prosa: boolean
+  render_asset_path: string | null
 }
 
 export type Character = {
@@ -290,6 +291,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ provider_id: providerId, force }),
     }),
+  generateChapterRender: (chapterId: string) =>
+    request<Job>(`/api/chapters/${chapterId}/render:generate`, { method: "POST" }),
   getJob: (jobId: string) => request<Job>(`/api/jobs/${jobId}`),
   listShotAssets: (shotId: string) => request<Asset[]>(`/api/shots/${shotId}/assets`),
   selectShotAsset: (shotId: string, assetId: string) =>

@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.adapters.inbound.api.routers import chapters, jobs, media, projects, providers, sheets, shots, voice_pool
 from app.adapters.outbound.jobs.in_process_job_queue import InProcessJobQueue
 from app.adapters.outbound.media.ffprobe_probe import FfprobeMediaProbe
+from app.adapters.outbound.render.remotion_render_adapter import RemotionRenderAdapter
 from app.adapters.outbound.repository.db import create_db_and_tables, make_engine
 from app.adapters.outbound.repository.project_repository import SqlProjectRepository
 from app.config.provider_registry import ProviderRegistry
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
     app.state.provider_registry = ProviderRegistry(settings)
     app.state.job_queue = InProcessJobQueue(app.state.repository)
     app.state.media_probe = FfprobeMediaProbe()
+    app.state.render_port = RemotionRenderAdapter(settings.render_project_dir, app.state.media_probe)
 
     yield
 

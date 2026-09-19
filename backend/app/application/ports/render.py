@@ -11,6 +11,11 @@ class RenderRequest:
     composition_id: str  # "Capitulo" | "MusicVideo" | "LyricsVideo" | "Karaoke"
     timeline: dict[str, Any]  # timeline.json ya resuelto
     output_path: Path
+    # Carpeta que el sidecar sirve como "public dir" de Remotion (staticFile) --
+    # las rutas de imagen/audio/video dentro de `timeline` son RELATIVAS a esta
+    # carpeta, igual que build_scenes.py ya las generaba relativas a
+    # `capitulo-N/assets/`. Ver render/remotion.config.ts.
+    public_dir: Path
 
 
 @dataclass

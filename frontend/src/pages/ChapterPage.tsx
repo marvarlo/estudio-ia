@@ -30,6 +30,8 @@ export function ChapterPage() {
   const [history, setHistory] = useState<Asset[]>([])
   const [batchBusy, setBatchBusy] = useState<"image" | "audio" | null>(null)
   const [batchMessage, setBatchMessage] = useState<string | null>(null)
+  const [renderBusy, setRenderBusy] = useState(false)
+  const [renderMessage, setRenderMessage] = useState<string | null>(null)
 
   const load = useCallback(() => {
     if (!chapterId) return
@@ -155,6 +157,26 @@ export function ChapterPage() {
     }
   }
 
+  async function handleRender() {
+    if (!chapterId) return
+    setRenderBusy(true)
+    setRenderMessage(null)
+    setError(null)
+    try {
+      const job = await api.generateChapterRender(chapterId)
+      setRenderMessage("Renderizando capitulo (puede tardar varios minutos)...")
+      const finished = await pollJob(job.id)
+      if (finished.status === "failed") throw new Error(finished.error ?? "El render fallo sin detalle")
+      setRenderMessage("Render terminado.")
+      load()
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+      setRenderMessage(null)
+    } finally {
+      setRenderBusy(false)
+    }
+  }
+
   async function toggleHistory(shotId: string) {
     if (historyFor === shotId) {
       setHistoryFor(null)
@@ -196,14 +218,32 @@ export function ChapterPage() {
           </h1>
           <p className="mt-1 text-sm text-zinc-400">{shots.length} shots</p>
         </div>
-        <button onClick={handleExport} className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800">
-          Exportar produccion.md
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button onClick={handleExport} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800">
+            Exportar produccion.md
+          </button>
+          <button
+            onClick={handleRender}
+            disabled={renderBusy}
+            className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+          >
+            {renderBusy ? "Renderizando..." : "Renderizar capitulo"}
+          </button>
+        </div>
       </div>
 
       {error && <p className="rounded-lg border border-red-900 bg-red-950 px-3 py-2 text-sm text-red-300">{error}</p>}
       {exportMessage && (
         <p className="rounded-lg border border-emerald-900 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-200">{exportMessage}</p>
+      )}
+      {renderMessage && (
+        <p className="rounded-lg border border-emerald-900 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-200">{renderMessage}</p>
+      )}
+      {data.chapter.render_asset_path && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+          <p className="mb-2 text-xs text-zinc-500">Ultimo render de este capitulo:</p>
+          <video src={mediaUrl(data.chapter.render_asset_path) ?? undefined} controls className="max-h-96 w-full rounded-lg bg-black" />
+        </div>
       )}
       {chapterWarnings.length > 0 && (
         <div className="rounded-lg border border-amber-900 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">

@@ -79,6 +79,7 @@ def _row_to_chapter(row: ChapterRow) -> Chapter:
         prosa_path=Path(row.prosa_path) if row.prosa_path else None,
         produccion_path=Path(row.produccion_path) if row.produccion_path else None,
         estado=ChapterStatus(row.estado),
+        selected_render_asset_id=row.selected_render_asset_id,
     )
 
 
@@ -264,6 +265,7 @@ class SqlProjectRepository:
                     prosa_path=str(chapter.prosa_path) if chapter.prosa_path else None,
                     produccion_path=str(chapter.produccion_path) if chapter.produccion_path else None,
                     estado=chapter.estado.value,
+                    selected_render_asset_id=chapter.selected_render_asset_id,
                 )
             )
             session.commit()

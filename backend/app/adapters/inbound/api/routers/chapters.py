@@ -6,8 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.adapters.inbound.api.deps import (
     build_image_use_case,
+    build_render_use_case,
     get_job_queue,
+    get_media_probe,
     get_provider_registry,
+    get_render_port,
     get_repository,
     resolve_adapter,
 )
@@ -25,6 +28,8 @@ from app.adapters.inbound.api.schemas import (
     ShotWriteRequest,
 )
 from app.application.ports.job_queue import JobQueuePort
+from app.application.ports.media_probe import MediaProbePort
+from app.application.ports.render import RenderPort
 from app.application.use_cases.chapter_editing import CreateChapterUseCase
 from app.application.use_cases.export_production_sheet import ExportProductionSheetUseCase
 from app.application.use_cases.generate_shot_audio import GenerateShotAudioUseCase
@@ -132,6 +137,39 @@ async def generate_chapter_images(
         jobs.append(JobOut.from_domain(job))
 
     return BatchGenerateOut(jobs=jobs, skipped=skipped)
+
+
+@router.post("/{chapter_id}/render:generate", response_model=JobOut)
+async def render_chapter(
+    chapter_id: str,
+    repository=Depends(get_repository),
+    render_port: RenderPort = Depends(get_render_port),
+    media_probe: MediaProbePort = Depends(get_media_probe),
+    queue: JobQueuePort = Depends(get_job_queue),
+) -> JobOut:
+    """Encola el render final del capitulo (sidecar Remotion, fase 3): pausa
+    hasta que el proceso de Node termine, asi que siempre va por Job -- un
+    capitulo de varios minutos tarda bastante mas que una generacion de
+    imagen/audio puntual."""
+    chapter = repository.get_chapter(chapter_id)
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Capitulo no encontrado")
+    use_case = build_render_use_case(repository, render_port, media_probe)
+
+    async def run() -> dict:
+        asset = await use_case.execute(chapter_id)
+        return {"asset_id": asset.id, "path": str(asset.path)}
+
+    job = Job(
+        id=str(uuid.uuid4()),
+        project_id=chapter.project_id,
+        kind="render_chapter",
+        provider="remotion",
+        payload={"chapter_id": chapter_id},
+        cost_estimate=0.0,
+    )
+    job = await queue.enqueue(job, run)
+    return JobOut.from_domain(job)
 
 
 @router.post("/{chapter_id}/audio:generate", response_model=BatchGenerateOut)
