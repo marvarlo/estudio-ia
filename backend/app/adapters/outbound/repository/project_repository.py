@@ -15,12 +15,15 @@ from app.adapters.outbound.repository.models import (
     CharacterRow,
     JobRow,
     LocationRow,
+    LyricLineRow,
     ProjectRow,
     ShotRow,
+    TrackRow,
     VoicePoolVoiceRow,
     VoiceRow,
 )
 from app.domain.jobs.entities import Job
+from app.domain.music.entities import LyricLine, LyricWord, Track
 from app.domain.shared.value_objects import AssetKind, ChapterStatus, JobStatus, ProjectKind, ShotType, Tone
 from app.domain.story.entities import (
     Asset,
@@ -174,6 +177,30 @@ def _row_to_job(row: JobRow) -> Job:
         cost_actual=row.cost_actual,
         created_at=row.created_at,
         updated_at=row.updated_at,
+    )
+
+
+def _row_to_track(row: TrackRow) -> Track:
+    return Track(
+        id=row.id,
+        project_id=row.project_id,
+        source_path=row.source_path,
+        duration_seconds=row.duration_seconds,
+        bpm=row.bpm,
+        key=row.key,
+        instrumental_path=row.instrumental_path,
+    )
+
+
+def _row_to_lyric_line(row: LyricLineRow) -> LyricLine:
+    return LyricLine(
+        id=row.id,
+        track_id=row.track_id,
+        index=row.index,
+        text=row.text,
+        start=row.start,
+        end=row.end,
+        words=[LyricWord(**w) for w in json.loads(row.words_json)],
     )
 
 
@@ -588,3 +615,82 @@ class SqlProjectRepository:
                 select(JobRow).where(JobRow.shot_id == shot_id).order_by(JobRow.created_at.desc())
             ).all()
             return [_row_to_job(row) for row in rows]
+
+    # -- Musica (fase 4) --------------------------------------------------
+    def save_track(self, track: Track) -> None:
+        with Session(self._engine) as session:
+            session.merge(
+                TrackRow(
+                    id=track.id,
+                    project_id=track.project_id,
+                    source_path=track.source_path,
+                    duration_seconds=track.duration_seconds,
+                    bpm=track.bpm,
+                    key=track.key,
+                    instrumental_path=track.instrumental_path,
+                )
+            )
+            session.commit()
+
+    def get_track(self, track_id: str) -> Track | None:
+        with Session(self._engine) as session:
+            row = session.get(TrackRow, track_id)
+            return _row_to_track(row) if row else None
+
+    def list_tracks(self, project_id: str) -> list[Track]:
+        with Session(self._engine) as session:
+            rows = session.exec(select(TrackRow).where(TrackRow.project_id == project_id)).all()
+            return [_row_to_track(row) for row in rows]
+
+    def replace_lyric_lines(self, track_id: str, lines: list[LyricLine]) -> None:
+        with Session(self._engine) as session:
+            existing = session.exec(select(LyricLineRow).where(LyricLineRow.track_id == track_id)).all()
+            for row in existing:
+                session.delete(row)
+            for line in lines:
+                session.add(
+                    LyricLineRow(
+                        id=line.id,
+                        track_id=line.track_id,
+                        index=line.index,
+                        text=line.text,
+                        start=line.start,
+                        end=line.end,
+                        words_json=json.dumps([w.__dict__ for w in line.words], ensure_ascii=False),
+                    )
+                )
+            session.commit()
+
+    def list_lyric_lines(self, track_id: str) -> list[LyricLine]:
+        with Session(self._engine) as session:
+            rows = session.exec(
+                select(LyricLineRow).where(LyricLineRow.track_id == track_id).order_by(LyricLineRow.index)
+            ).all()
+            return [_row_to_lyric_line(row) for row in rows]
+
+    def get_lyric_line(self, line_id: str) -> LyricLine | None:
+        with Session(self._engine) as session:
+            row = session.get(LyricLineRow, line_id)
+            return _row_to_lyric_line(row) if row else None
+
+    def save_lyric_line(self, line: LyricLine) -> None:
+        with Session(self._engine) as session:
+            session.merge(
+                LyricLineRow(
+                    id=line.id,
+                    track_id=line.track_id,
+                    index=line.index,
+                    text=line.text,
+                    start=line.start,
+                    end=line.end,
+                    words_json=json.dumps([w.__dict__ for w in line.words], ensure_ascii=False),
+                )
+            )
+            session.commit()
+
+    def delete_lyric_line(self, line_id: str) -> None:
+        with Session(self._engine) as session:
+            row = session.get(LyricLineRow, line_id)
+            if row:
+                session.delete(row)
+                session.commit()

@@ -185,6 +185,33 @@ export type BatchGenerateResult = {
   skipped: number
 }
 
+// Musica (fase 4): pistas, letra transcrita, render de lyrics/karaoke.
+export type Track = {
+  id: string
+  project_id: string
+  source_path: string
+  duration_seconds: number | null
+  bpm: number | null
+  key: string | null
+  instrumental_path: string | null
+}
+
+export type TrackProjectResult = {
+  project: Project
+  chapter: Chapter
+  track: Track
+}
+
+export type LyricWordTiming = { text: string; start: number; end: number; suspect: boolean }
+export type LyricLine = {
+  id: string
+  index: number
+  text: string
+  start: number
+  end: number
+  words: LyricWordTiming[]
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -301,6 +328,37 @@ export const api = {
   // Proveedores
   listProviders: () => request<Provider[]>("/api/providers"),
   testProvider: (providerId: string) => request<ProviderHealth>(`/api/providers/${providerId}/test`, { method: "POST" }),
+
+  // Musica (fase 4): pistas, letra transcrita, render de lyrics/karaoke
+  createTrack: async (data: { name: string; kind: "lyrics_video" | "karaoke"; file: File }): Promise<TrackProjectResult> => {
+    const form = new FormData()
+    form.append("name", data.name)
+    form.append("kind", data.kind)
+    form.append("file", data.file)
+    const response = await fetch(`${API_BASE}/api/tracks`, { method: "POST", body: form })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ detail: response.statusText }))
+      throw new Error(typeof body.detail === "string" ? body.detail : response.statusText)
+    }
+    return response.json() as Promise<TrackProjectResult>
+  },
+  getTrack: (trackId: string) => request<TrackProjectResult>(`/api/tracks/${trackId}`),
+  listTracksForProject: (projectId: string) => request<Track[]>(`/api/tracks?project_id=${projectId}`),
+  transcribeTrack: (trackId: string, providerId = "lemonade-transcribe", language?: string) =>
+    request<Job>(`/api/tracks/${trackId}/transcribe`, {
+      method: "POST",
+      body: JSON.stringify({ provider_id: providerId, language: language || null }),
+    }),
+  listLyricLines: (trackId: string) => request<LyricLine[]>(`/api/tracks/${trackId}/lines`),
+  updateLyricLine: (lineId: string, data: { text: string; start: number; end: number }) =>
+    request<LyricLine>(`/api/tracks/lines/${lineId}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteLyricLine: (lineId: string) => request<void>(`/api/tracks/lines/${lineId}`, { method: "DELETE" }),
+  generateShotsFromLyrics: (trackId: string) => request<Shot[]>(`/api/tracks/${trackId}/shots:generate`, { method: "POST" }),
+  renderMusicVideo: (trackId: string, compositionId: "LyricsVideo" | "Karaoke") =>
+    request<Job>(`/api/tracks/${trackId}/render:generate`, {
+      method: "POST",
+      body: JSON.stringify({ composition_id: compositionId }),
+    }),
 }
 
 /** Poll a un job hasta que llegue a un estado terminal (done/failed/cancelled). */

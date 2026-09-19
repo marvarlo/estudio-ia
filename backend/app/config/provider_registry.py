@@ -12,6 +12,7 @@ from app.adapters.outbound.image.gemini_image import GeminiImageAdapter
 from app.adapters.outbound.image.lemonade_image import LemonadeImageAdapter
 from app.adapters.outbound.llm.gemini_text import GeminiTextAdapter
 from app.adapters.outbound.llm.lemonade_text import LemonadeTextAdapter
+from app.adapters.outbound.transcription.lemonade_transcription import LemonadeTranscriptionAdapter
 from app.adapters.outbound.tts.elevenlabs_tts import ElevenLabsTTSAdapter
 from app.adapters.outbound.tts.lemonade_tts import LemonadeTTSAdapter
 from app.adapters.outbound.video.omni_video import GeminiOmniVideoAdapter
@@ -53,6 +54,10 @@ class ProviderRegistry:
         self._add(
             "lemonade-tts", "Lemonade Server (MOSS-TTS-Local)", "local", ["tts"],
             configured=True, adapter=LemonadeTTSAdapter(self._settings.lemonade_base_url),
+        )
+        self._add(
+            "lemonade-transcribe", "Lemonade Server (Whisper-Large-v3-Turbo)", "local", ["transcribe"],
+            configured=True, adapter=LemonadeTranscriptionAdapter(self._settings.lemonade_base_url),
         )
         self._add(
             "gemini", "Google Gemini (texto + Nano Banana Pro)", "cloud", ["text", "image"],

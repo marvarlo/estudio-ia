@@ -7,10 +7,12 @@ from pydantic import BaseModel, Field
 from app.application.ports.provider_health import ProviderHealth
 from app.application.use_cases.import_story_project import ImportSummary
 from app.application.use_cases.lint import LintWarning
+from app.application.use_cases.music_track import TrackProject
 from app.application.use_cases.project_queries import ProjectDetail
 from app.application.use_cases.provider_queries import ProviderSummary
 from app.application.use_cases.story_generation import CastGenerationResult
 from app.domain.jobs.entities import Job
+from app.domain.music.entities import LyricLine, Track
 from app.domain.story.entities import (
     Asset,
     Canon,
@@ -485,3 +487,86 @@ class JobOut(BaseModel):
 class BatchGenerateOut(BaseModel):
     jobs: list[JobOut]
     skipped: int  # shots que ya tenian un asset seleccionado y no se re-encolaron
+
+
+# ---------------------------------------------------------------------------
+# Musica (fase 4): pistas, letra transcrita, render de videoclip de letra/karaoke
+# ---------------------------------------------------------------------------
+
+
+class TrackOut(BaseModel):
+    id: str
+    project_id: str
+    source_path: str
+    duration_seconds: float | None
+    bpm: float | None
+    key: str | None
+    instrumental_path: str | None
+
+    @classmethod
+    def from_domain(cls, track: Track) -> "TrackOut":
+        return cls(
+            id=track.id,
+            project_id=track.project_id,
+            source_path=track.source_path,
+            duration_seconds=track.duration_seconds,
+            bpm=track.bpm,
+            key=track.key,
+            instrumental_path=track.instrumental_path,
+        )
+
+
+class TrackProjectOut(BaseModel):
+    project: ProjectOut
+    chapter: ChapterOut
+    track: TrackOut
+
+    @classmethod
+    def from_domain(cls, result: TrackProject) -> "TrackProjectOut":
+        return cls(
+            project=ProjectOut.from_domain(result.project),
+            chapter=ChapterOut.from_domain(result.chapter),
+            track=TrackOut.from_domain(result.track),
+        )
+
+
+class LyricWordOut(BaseModel):
+    text: str
+    start: float
+    end: float
+    suspect: bool = False
+
+
+class LyricLineOut(BaseModel):
+    id: str
+    index: int
+    text: str
+    start: float
+    end: float
+    words: list[LyricWordOut]
+
+    @classmethod
+    def from_domain(cls, line: LyricLine) -> "LyricLineOut":
+        return cls(
+            id=line.id,
+            index=line.index,
+            text=line.text,
+            start=line.start,
+            end=line.end,
+            words=[LyricWordOut(text=w.text, start=w.start, end=w.end, suspect=w.suspect) for w in line.words],
+        )
+
+
+class LyricLineUpdateRequest(BaseModel):
+    text: str
+    start: float
+    end: float
+
+
+class TranscribeRequest(BaseModel):
+    provider_id: str = "lemonade-transcribe"
+    language: str | None = None
+
+
+class MusicRenderRequest(BaseModel):
+    composition_id: str  # "LyricsVideo" | "Karaoke"
