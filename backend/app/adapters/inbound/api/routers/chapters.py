@@ -23,6 +23,10 @@ from app.adapters.inbound.api.schemas import (
     ExportOut,
     JobOut,
     LintWarningOut,
+    ProductionSheetDeriveRequest,
+    ProseGenerateRequest,
+    ProseOut,
+    ProseUpdateRequest,
     ReorderShotsRequest,
     ShotOut,
     ShotWriteRequest,
@@ -31,6 +35,7 @@ from app.application.ports.job_queue import JobQueuePort
 from app.application.ports.media_probe import MediaProbePort
 from app.application.ports.render import RenderPort
 from app.application.use_cases.chapter_editing import CreateChapterUseCase
+from app.application.use_cases.chapter_prose import DeriveProductionSheetFromProseUseCase, WriteChapterProseUseCase
 from app.application.use_cases.export_production_sheet import ExportProductionSheetUseCase
 from app.application.use_cases.generate_shot_audio import GenerateShotAudioUseCase
 from app.application.use_cases.lint import LintProductionSheetUseCase
@@ -137,6 +142,90 @@ async def generate_chapter_images(
         jobs.append(JobOut.from_domain(job))
 
     return BatchGenerateOut(jobs=jobs, skipped=skipped)
+
+
+@router.get("/{chapter_id}/prose", response_model=ProseOut)
+def get_prose(chapter_id: str, repository=Depends(get_repository)) -> ProseOut:
+    chapter = repository.get_chapter(chapter_id)
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Capitulo no encontrado")
+    if chapter.prosa_path is None or not chapter.prosa_path.exists():
+        return ProseOut(text="", path=None)
+    return ProseOut(text=chapter.prosa_path.read_text(encoding="utf-8"), path=str(chapter.prosa_path))
+
+
+@router.put("/{chapter_id}/prose", response_model=ProseOut)
+def update_prose(chapter_id: str, payload: ProseUpdateRequest, repository=Depends(get_repository)) -> ProseOut:
+    """Permite corregir la prosa a mano antes de derivar la hoja de
+    produccion -- corregir tono/ritmo en texto es mucho mas barato que
+    descubrir el mismo problema despues de generar imagenes/audio (SKILL.md
+    9.1)."""
+    chapter = repository.get_chapter(chapter_id)
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Capitulo no encontrado")
+    project = repository.get_project(chapter.project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+    prosa_path = chapter.prosa_path or (project.root_path / f"capitulo-{chapter.numero}" / "capitulo.md")
+    prosa_path.parent.mkdir(parents=True, exist_ok=True)
+    prosa_path.write_text(payload.text, encoding="utf-8")
+    if chapter.prosa_path is None:
+        chapter.prosa_path = prosa_path
+        repository.save_chapter(chapter)
+    return ProseOut(text=payload.text, path=str(prosa_path))
+
+
+@router.post("/{chapter_id}/prose:generate", response_model=JobOut)
+async def generate_prose(
+    chapter_id: str,
+    payload: ProseGenerateRequest,
+    repository=Depends(get_repository),
+    registry=Depends(get_provider_registry),
+    queue: JobQueuePort = Depends(get_job_queue),
+) -> JobOut:
+    chapter = repository.get_chapter(chapter_id)
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Capitulo no encontrado")
+    text_port = resolve_adapter(registry, payload.provider_id)
+    use_case = WriteChapterProseUseCase(repository, text_port)
+
+    async def run() -> dict:
+        updated = await use_case.execute(chapter_id)
+        text = updated.prosa_path.read_text(encoding="utf-8") if updated.prosa_path else ""
+        return {"prosa_path": str(updated.prosa_path), "word_count": len(text.split())}
+
+    job = Job(
+        id=str(uuid.uuid4()), project_id=chapter.project_id, kind="write_chapter_prose",
+        provider=payload.provider_id, cost_estimate=estimate_cost(payload.provider_id, "text"),
+    )
+    job = await queue.enqueue(job, run)
+    return JobOut.from_domain(job)
+
+
+@router.post("/{chapter_id}/production-sheet:derive", response_model=JobOut)
+async def derive_production_sheet(
+    chapter_id: str,
+    payload: ProductionSheetDeriveRequest,
+    repository=Depends(get_repository),
+    registry=Depends(get_provider_registry),
+    queue: JobQueuePort = Depends(get_job_queue),
+) -> JobOut:
+    chapter = repository.get_chapter(chapter_id)
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Capitulo no encontrado")
+    text_port = resolve_adapter(registry, payload.provider_id)
+    use_case = DeriveProductionSheetFromProseUseCase(repository, text_port)
+
+    async def run() -> dict:
+        shots = await use_case.execute(chapter_id)
+        return {"shots_count": len(shots)}
+
+    job = Job(
+        id=str(uuid.uuid4()), project_id=chapter.project_id, kind="derive_production_sheet",
+        provider=payload.provider_id, cost_estimate=estimate_cost(payload.provider_id, "text"),
+    )
+    job = await queue.enqueue(job, run)
+    return JobOut.from_domain(job)
 
 
 @router.post("/{chapter_id}/render:generate", response_model=JobOut)

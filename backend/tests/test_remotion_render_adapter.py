@@ -135,3 +135,33 @@ async def test_props_file_contains_the_timeline(tmp_path, monkeypatch):
     await adapter.render(request)
 
     assert written_props["data"] == {"timeline": timeline}
+
+
+async def test_separador_and_cierre_props_are_not_wrapped_in_timeline(tmp_path, monkeypatch):
+    """Separador/Cierre (corte de temporada) tienen props planos propios
+    ({numeroCapitulo, tituloCapitulo} o {} vacio) -- no son parte del
+    contrato timeline.json, asi que NO deben ir envueltos como las demas
+    composiciones."""
+    project_dir = _make_render_project(tmp_path)
+    adapter = RemotionRenderAdapter(project_dir, FakeMediaProbe())
+    monkeypatch.setattr("shutil.which", lambda name: "C:/node.exe")
+
+    written_props = {}
+
+    async def fake_exec(*cmd, cwd, env, stdout, stderr):
+        props_arg = next(a for a in cmd if a.startswith("--props="))
+        props_path = props_arg.removeprefix("--props=")
+        written_props["data"] = json.loads(open(props_path, encoding="utf-8").read())
+        return FakeProcess(returncode=0)
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+
+    request = RenderRequest(
+        composition_id="Separador",
+        timeline={"numeroCapitulo": 2, "tituloCapitulo": "La Caida"},
+        output_path=tmp_path / "separador.mp4",
+        public_dir=tmp_path,
+    )
+    await adapter.render(request)
+
+    assert written_props["data"] == {"numeroCapitulo": 2, "tituloCapitulo": "La Caida"}

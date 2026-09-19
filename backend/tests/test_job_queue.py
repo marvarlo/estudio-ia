@@ -47,6 +47,23 @@ async def test_enqueue_marks_failed_with_error_message(repository):
     assert "algo salio mal" in finished.error
 
 
+async def test_enqueue_falls_back_to_exception_name_when_message_is_empty(repository):
+    """httpx.ReadTimeout (y otras excepciones sin mensaje) no deben dejar
+    error='' -- verificado en vivo con una derivacion de hoja de produccion
+    que supero el timeout del LLM local."""
+    queue = InProcessJobQueue(repository)
+    job = Job(id="job-empty-error", project_id=None, shot_id=None, kind="test", provider="fake")
+
+    async def run() -> dict:
+        raise TimeoutError()
+
+    await queue.enqueue(job, run)
+    finished = await _wait_until_terminal(queue, "job-empty-error")
+
+    assert finished.status == JobStatus.FAILED
+    assert finished.error == "TimeoutError"
+
+
 async def test_job_is_persisted_and_gettable_by_id(repository):
     queue = InProcessJobQueue(repository)
     job = Job(id="job-3", project_id="proj-1", shot_id="shot-1", kind="test", provider="fake", cost_estimate=0.02)
