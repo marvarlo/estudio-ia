@@ -11,11 +11,14 @@ export function Layout() {
       <aside className="w-56 shrink-0 border-r border-zinc-800 p-4">
         <div className="mb-6 px-2">
           <p className="text-lg font-semibold tracking-tight">Estudio IA</p>
-          <p className="text-xs text-zinc-500">Fase 0 &middot; cimientos</p>
+          <p className="text-xs text-zinc-500">Fase 1 &middot; contenido y cast</p>
         </div>
         <nav className="space-y-1">
           <NavLink to="/" end className={linkClass}>
             Proyectos
+          </NavLink>
+          <NavLink to="/new" className={linkClass}>
+            + Nuevo proyecto
           </NavLink>
           <NavLink to="/providers" className={linkClass}>
             Proveedores

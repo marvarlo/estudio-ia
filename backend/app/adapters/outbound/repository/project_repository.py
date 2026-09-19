@@ -16,10 +16,22 @@ from app.adapters.outbound.repository.models import (
     LocationRow,
     ProjectRow,
     ShotRow,
+    VoicePoolVoiceRow,
     VoiceRow,
 )
 from app.domain.shared.value_objects import AssetKind, ChapterStatus, ProjectKind, ShotType, Tone
-from app.domain.story.entities import Asset, Canon, Chapter, Character, Location, Project, Shot, Voice
+from app.domain.story.entities import (
+    Asset,
+    Canon,
+    Chapter,
+    Character,
+    Location,
+    Project,
+    SeasonEpisode,
+    Shot,
+    Voice,
+    VoicePoolVoice,
+)
 
 
 def _project_to_row(project: Project) -> ProjectRow:
@@ -33,6 +45,8 @@ def _project_to_row(project: Project) -> ProjectRow:
         tono=project.tono.value,
         plataformas_json=json.dumps(project.plataformas, ensure_ascii=False),
         formatos_json=json.dumps(project.formatos, ensure_ascii=False),
+        num_episodios=project.num_episodios,
+        duracion_objetivo_min=project.duracion_objetivo_min,
         created_at=project.created_at,
     )
 
@@ -48,6 +62,8 @@ def _row_to_project(row: ProjectRow) -> Project:
         tono=Tone(row.tono),
         plataformas=json.loads(row.plataformas_json),
         formatos=json.loads(row.formatos_json),
+        num_episodios=row.num_episodios,
+        duracion_objetivo_min=row.duracion_objetivo_min,
         created_at=row.created_at,
     )
 
@@ -93,6 +109,7 @@ def _row_to_character(row: CharacterRow) -> Character:
     return Character(
         id=row.id,
         project_id=row.project_id,
+        slug=row.slug,
         nombre=row.nombre,
         rol=row.rol,
         prompt_anchor=row.prompt_anchor,
@@ -106,6 +123,7 @@ def _row_to_location(row: LocationRow) -> Location:
     return Location(
         id=row.id,
         project_id=row.project_id,
+        slug=row.slug,
         nombre=row.nombre,
         descripcion_fija=row.descripcion_fija,
         reference_image_path=Path(row.reference_image_path) if row.reference_image_path else None,
@@ -121,6 +139,19 @@ def _row_to_voice(row: VoiceRow) -> Voice:
         voice_id_externo=row.voice_id_externo,
         modelo_tts=row.modelo_tts,
         notas_direccion=row.notas_direccion,
+    )
+
+
+def _row_to_voice_pool(row: VoicePoolVoiceRow) -> VoicePoolVoice:
+    return VoicePoolVoice(
+        id=row.id,
+        proveedor=row.proveedor,
+        voice_id_externo=row.voice_id_externo,
+        nombre_interno=row.nombre_interno,
+        modelo_tts=row.modelo_tts,
+        atributos=json.loads(row.atributos_json),
+        veces_usada=row.veces_usada,
+        ultima_historia=row.ultima_historia,
     )
 
 
@@ -176,8 +207,10 @@ class SqlProjectRepository:
                 CanonRow(
                     project_id=canon.project_id,
                     logline=canon.logline,
+                    premisa=canon.premisa,
                     reglas_sistema=canon.reglas_sistema,
                     glosario=canon.glosario,
+                    temporada_json=json.dumps([ep.__dict__ for ep in canon.temporada], ensure_ascii=False),
                     raw_markdown=canon.raw_markdown,
                 )
             )
@@ -191,8 +224,10 @@ class SqlProjectRepository:
             return Canon(
                 project_id=row.project_id,
                 logline=row.logline,
+                premisa=row.premisa,
                 reglas_sistema=row.reglas_sistema,
                 glosario=row.glosario,
+                temporada=[SeasonEpisode(**ep) for ep in json.loads(row.temporada_json)],
                 raw_markdown=row.raw_markdown,
             )
 
@@ -263,6 +298,50 @@ class SqlProjectRepository:
             ).all()
             return [_row_to_shot(row) for row in rows]
 
+    def get_shot(self, shot_id: str) -> Shot | None:
+        with Session(self._engine) as session:
+            row = session.get(ShotRow, shot_id)
+            return _row_to_shot(row) if row else None
+
+    def save_shot(self, shot: Shot) -> None:
+        """Crea o actualiza UN shot puntual -- a diferencia de replace_shots
+        (usado por el importador para reescribir el capitulo entero), esto
+        es lo que usa la edicion en vivo de la tabla de produccion desde la
+        web (seccion 5/11 del doc de arquitectura, 'la tabla se edita en la
+        web')."""
+        with Session(self._engine) as session:
+            session.merge(
+                ShotRow(
+                    id=shot.id,
+                    chapter_id=shot.chapter_id,
+                    orden=shot.orden,
+                    tipo=shot.tipo.value,
+                    personaje_ids_json=json.dumps(shot.personaje_ids, ensure_ascii=False),
+                    escenario_id=shot.escenario_id,
+                    sub_escenario=shot.sub_escenario,
+                    momento_dia=shot.momento_dia,
+                    texto=shot.texto,
+                    prompt_imagen=shot.prompt_imagen,
+                    prompt_video=shot.prompt_video,
+                    movimiento_camara=shot.movimiento_camara,
+                    duracion_estimada_seg=shot.duracion_estimada_seg,
+                    duracion_real_seg=shot.duracion_real_seg,
+                    sfx_musica=shot.sfx_musica,
+                    voice_id=shot.voice_id,
+                    selected_image_asset_id=shot.selected_image_asset_id,
+                    selected_audio_asset_id=shot.selected_audio_asset_id,
+                    selected_video_asset_id=shot.selected_video_asset_id,
+                )
+            )
+            session.commit()
+
+    def delete_shot(self, shot_id: str) -> None:
+        with Session(self._engine) as session:
+            row = session.get(ShotRow, shot_id)
+            if row:
+                session.delete(row)
+                session.commit()
+
     # -- Character / Location / Voice ---------------------------------------
     def save_character(self, character: Character) -> None:
         with Session(self._engine) as session:
@@ -270,6 +349,7 @@ class SqlProjectRepository:
                 CharacterRow(
                     id=character.id,
                     project_id=character.project_id,
+                    slug=character.slug,
                     nombre=character.nombre,
                     rol=character.rol,
                     prompt_anchor=character.prompt_anchor,
@@ -287,12 +367,25 @@ class SqlProjectRepository:
             rows = session.exec(select(CharacterRow).where(CharacterRow.project_id == project_id)).all()
             return [_row_to_character(row) for row in rows]
 
+    def get_character(self, character_id: str) -> Character | None:
+        with Session(self._engine) as session:
+            row = session.get(CharacterRow, character_id)
+            return _row_to_character(row) if row else None
+
+    def get_character_by_slug(self, project_id: str, slug: str) -> Character | None:
+        with Session(self._engine) as session:
+            row = session.exec(
+                select(CharacterRow).where(CharacterRow.project_id == project_id, CharacterRow.slug == slug)
+            ).first()
+            return _row_to_character(row) if row else None
+
     def save_location(self, location: Location) -> None:
         with Session(self._engine) as session:
             session.merge(
                 LocationRow(
                     id=location.id,
                     project_id=location.project_id,
+                    slug=location.slug,
                     nombre=location.nombre,
                     descripcion_fija=location.descripcion_fija,
                     reference_image_path=str(location.reference_image_path)
@@ -306,6 +399,18 @@ class SqlProjectRepository:
         with Session(self._engine) as session:
             rows = session.exec(select(LocationRow).where(LocationRow.project_id == project_id)).all()
             return [_row_to_location(row) for row in rows]
+
+    def get_location(self, location_id: str) -> Location | None:
+        with Session(self._engine) as session:
+            row = session.get(LocationRow, location_id)
+            return _row_to_location(row) if row else None
+
+    def get_location_by_slug(self, project_id: str, slug: str) -> Location | None:
+        with Session(self._engine) as session:
+            row = session.exec(
+                select(LocationRow).where(LocationRow.project_id == project_id, LocationRow.slug == slug)
+            ).first()
+            return _row_to_location(row) if row else None
 
     def save_voice(self, voice: Voice) -> None:
         with Session(self._engine) as session:
@@ -357,6 +462,28 @@ class SqlProjectRepository:
                 )
             session.commit()
 
+    def save_asset(self, asset: Asset) -> None:
+        """Un asset puntual (ficha de referencia generada, o cualquier otro
+        generado por un Job) -- a diferencia de replace_scanned_assets, que
+        es solo para el escaneo masivo del importador."""
+        with Session(self._engine) as session:
+            session.merge(
+                AssetRow(
+                    id=asset.id,
+                    project_id=asset.project_id,
+                    chapter_id=asset.chapter_id,
+                    shot_id=asset.shot_id,
+                    kind=asset.kind.value,
+                    path=str(asset.path),
+                    width=asset.width,
+                    height=asset.height,
+                    provider=asset.provider,
+                    model=asset.model,
+                    created_at=asset.created_at,
+                )
+            )
+            session.commit()
+
     def list_assets(self, project_id: str, chapter_id: str | None = None) -> list[Asset]:
         with Session(self._engine) as session:
             query = select(AssetRow).where(AssetRow.project_id == project_id)
@@ -364,3 +491,30 @@ class SqlProjectRepository:
                 query = query.where(AssetRow.chapter_id == chapter_id)
             rows = session.exec(query).all()
             return [_row_to_asset(row) for row in rows]
+
+    # -- Pool de voces (nivel canal) ------------------------------------
+    def save_pool_voice(self, voice: VoicePoolVoice) -> None:
+        with Session(self._engine) as session:
+            session.merge(
+                VoicePoolVoiceRow(
+                    id=voice.id,
+                    proveedor=voice.proveedor,
+                    voice_id_externo=voice.voice_id_externo,
+                    nombre_interno=voice.nombre_interno,
+                    modelo_tts=voice.modelo_tts,
+                    atributos_json=json.dumps(voice.atributos, ensure_ascii=False),
+                    veces_usada=voice.veces_usada,
+                    ultima_historia=voice.ultima_historia,
+                )
+            )
+            session.commit()
+
+    def list_pool_voices(self) -> list[VoicePoolVoice]:
+        with Session(self._engine) as session:
+            rows = session.exec(select(VoicePoolVoiceRow)).all()
+            return [_row_to_voice_pool(row) for row in rows]
+
+    def get_pool_voice(self, voice_id: str) -> VoicePoolVoice | None:
+        with Session(self._engine) as session:
+            row = session.get(VoicePoolVoiceRow, voice_id)
+            return _row_to_voice_pool(row) if row else None

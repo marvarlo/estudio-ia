@@ -1,76 +1,259 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
-import { api, mediaUrl, type ChapterShots } from "../api/client"
+import { api, emptyShotWrite, mediaUrl, shotToWrite, type ChapterShots, type LintWarning, type Shot, type ShotWrite } from "../api/client"
 
 export function ChapterPage() {
   const { chapterId } = useParams<{ chapterId: string }>()
   const [data, setData] = useState<ChapterShots | null>(null)
+  const [edits, setEdits] = useState<Record<string, ShotWrite>>({})
+  const [lint, setLint] = useState<LintWarning[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [exportMessage, setExportMessage] = useState<string | null>(null)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!chapterId) return
     api
       .getChapterShots(chapterId)
-      .then(setData)
+      .then((result) => {
+        setData(result)
+        setEdits(Object.fromEntries(result.shots.map((s) => [s.id, shotToWrite(s)])))
+      })
       .catch((err) => setError(String(err.message ?? err)))
+    api.lintChapter(chapterId).then(setLint).catch(() => {})
   }, [chapterId])
 
-  if (error) return <p className="text-sm text-red-400">{error}</p>
+  useEffect(load, [load])
+
+  function updateField(shotId: string, field: keyof ShotWrite, value: ShotWrite[keyof ShotWrite]) {
+    setEdits((prev) => ({ ...prev, [shotId]: { ...prev[shotId], [field]: value } }))
+  }
+
+  async function handleSave(shotId: string) {
+    setSavingId(shotId)
+    setError(null)
+    try {
+      await api.updateShot(shotId, edits[shotId])
+      load()
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  async function handleDelete(shotId: string) {
+    setError(null)
+    try {
+      await api.deleteShot(shotId)
+      load()
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    }
+  }
+
+  async function handleMove(shot: Shot, direction: -1 | 1) {
+    if (!data || !chapterId) return
+    const ordered = [...data.shots].sort((a, b) => a.orden - b.orden)
+    const index = ordered.findIndex((s) => s.id === shot.id)
+    const target = index + direction
+    if (target < 0 || target >= ordered.length) return
+    ;[ordered[index], ordered[target]] = [ordered[target], ordered[index]]
+    try {
+      await api.reorderShots(chapterId, ordered.map((s) => s.id))
+      load()
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    }
+  }
+
+  async function handleAddShot() {
+    if (!chapterId) return
+    try {
+      await api.createShot(chapterId, emptyShotWrite())
+      load()
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    }
+  }
+
+  async function handleExport() {
+    if (!chapterId) return
+    try {
+      const result = await api.exportChapter(chapterId)
+      setExportMessage(`Exportado a ${result.path}`)
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    }
+  }
+
+  if (error && !data) return <p className="text-sm text-red-400">{error}</p>
   if (!data) return <p className="text-sm text-zinc-500">Cargando...</p>
 
+  const shots = [...data.shots].sort((a, b) => a.orden - b.orden)
+  const chapterWarnings = lint.filter((w) => w.shot_id === null)
+  const warningsByShot = new Map<string, LintWarning[]>()
+  for (const warning of lint) {
+    if (warning.shot_id) warningsByShot.set(warning.shot_id, [...(warningsByShot.get(warning.shot_id) ?? []), warning])
+  }
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">
-          Capitulo {data.chapter.numero}: {data.chapter.titulo}
-        </h1>
-        <p className="mt-1 text-sm text-zinc-400">{data.shots.length} shots</p>
+    <div className="mx-auto max-w-6xl space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">
+            Capitulo {data.chapter.numero}: {data.chapter.titulo}
+          </h1>
+          <p className="mt-1 text-sm text-zinc-400">{shots.length} shots</p>
+        </div>
+        <button onClick={handleExport} className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800">
+          Exportar produccion.md
+        </button>
       </div>
 
+      {error && <p className="rounded-lg border border-red-900 bg-red-950 px-3 py-2 text-sm text-red-300">{error}</p>}
+      {exportMessage && (
+        <p className="rounded-lg border border-emerald-900 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-200">
+          {exportMessage}
+        </p>
+      )}
+      {chapterWarnings.length > 0 && (
+        <div className="rounded-lg border border-amber-900 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+          {chapterWarnings.map((w, i) => (
+            <p key={i}>⚠ {w.message}</p>
+          ))}
+        </div>
+      )}
+
       <div className="space-y-3">
-        {data.shots.map((shot) => {
+        {shots.map((shot, index) => {
+          const edit = edits[shot.id] ?? shotToWrite(shot)
           const imageUrl = mediaUrl(shot.image_asset_path)
           const audioUrl = mediaUrl(shot.audio_asset_path)
+          const shotWarnings = warningsByShot.get(shot.id) ?? []
           return (
             <div key={shot.id} className="flex gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-              <div className="flex h-28 w-48 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-zinc-800">
-                {imageUrl ? (
-                  <img src={imageUrl} alt={`Shot ${shot.orden}`} className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-xs text-zinc-600">sin imagen</span>
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono">#{shot.orden}</span>
-                  <span
-                    className={`rounded px-1.5 py-0.5 ${
-                      shot.tipo === "Dialogo" ? "bg-amber-900 text-amber-200" : "bg-zinc-800"
-                    }`}
-                  >
-                    {shot.tipo}
-                  </span>
-                  {shot.personaje_ids.length > 0 && <span>{shot.personaje_ids.join(", ")}</span>}
-                  {shot.escenario_id && <span>&middot; {shot.escenario_id}</span>}
-                  {shot.momento_dia && <span>&middot; {shot.momento_dia}</span>}
-                  {shot.duracion_estimada_seg != null && <span>&middot; {shot.duracion_estimada_seg}s</span>}
+              <div className="flex w-40 shrink-0 flex-col gap-2">
+                <div className="flex h-24 w-full items-center justify-center overflow-hidden rounded-lg bg-zinc-800">
+                  {imageUrl ? (
+                    <img src={imageUrl} alt={`Shot ${shot.orden}`} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-xs text-zinc-600">sin imagen</span>
+                  )}
                 </div>
-                <p className="mt-1 text-sm text-zinc-100">{shot.texto}</p>
-                {shot.prompt_imagen && (
-                  <p className="mt-1 truncate text-xs text-zinc-500" title={shot.prompt_imagen}>
-                    {shot.prompt_imagen}
-                  </p>
-                )}
+                <div className="flex justify-between text-xs text-zinc-500">
+                  <button onClick={() => handleMove(shot, -1)} disabled={index === 0} className="hover:text-white disabled:opacity-30">
+                    ↑ subir
+                  </button>
+                  <button
+                    onClick={() => handleMove(shot, 1)}
+                    disabled={index === shots.length - 1}
+                    className="hover:text-white disabled:opacity-30"
+                  >
+                    bajar ↓
+                  </button>
+                </div>
                 {audioUrl && (
-                  <audio controls src={audioUrl} className="mt-2 h-8 w-full max-w-sm">
+                  <audio controls src={audioUrl} className="h-7 w-full">
                     <track kind="captions" />
                   </audio>
                 )}
+              </div>
+
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-zinc-400">#{shot.orden}</span>
+                  <select
+                    value={edit.tipo}
+                    onChange={(e) => updateField(shot.id, "tipo", e.target.value)}
+                    className="rounded border border-zinc-700 bg-zinc-950 px-1.5 py-0.5"
+                  >
+                    <option value="Narracion">Narracion</option>
+                    <option value="Dialogo">Dialogo</option>
+                  </select>
+                  <input
+                    value={edit.personaje_ids.join(", ")}
+                    onChange={(e) =>
+                      updateField(
+                        shot.id,
+                        "personaje_ids",
+                        e.target.value
+                          .split(",")
+                          .map((s) => s.trim())
+                          .filter(Boolean),
+                      )
+                    }
+                    placeholder="personajes (coma)"
+                    className="w-40 rounded border border-zinc-700 bg-zinc-950 px-1.5 py-0.5"
+                  />
+                  <input
+                    value={edit.escenario_id ?? ""}
+                    onChange={(e) => updateField(shot.id, "escenario_id", e.target.value || null)}
+                    placeholder="escenario_id"
+                    className="w-32 rounded border border-zinc-700 bg-zinc-950 px-1.5 py-0.5"
+                  />
+                  <input
+                    value={edit.momento_dia}
+                    onChange={(e) => updateField(shot.id, "momento_dia", e.target.value)}
+                    placeholder="momento del dia"
+                    className="w-28 rounded border border-zinc-700 bg-zinc-950 px-1.5 py-0.5"
+                  />
+                  <input
+                    type="number"
+                    value={edit.duracion_estimada_seg ?? ""}
+                    onChange={(e) => updateField(shot.id, "duracion_estimada_seg", e.target.value ? Number(e.target.value) : null)}
+                    placeholder="seg"
+                    className="w-16 rounded border border-zinc-700 bg-zinc-950 px-1.5 py-0.5"
+                  />
+                </div>
+
+                <textarea
+                  value={edit.texto}
+                  onChange={(e) => updateField(shot.id, "texto", e.target.value)}
+                  rows={2}
+                  placeholder="Texto narrado/dialogo"
+                  className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                />
+                <textarea
+                  value={edit.prompt_imagen}
+                  onChange={(e) => updateField(shot.id, "prompt_imagen", e.target.value)}
+                  rows={2}
+                  placeholder="Prompt de imagen"
+                  className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-400"
+                />
+
+                {shotWarnings.length > 0 && (
+                  <div className="text-xs text-amber-300">
+                    {shotWarnings.map((w, i) => (
+                      <p key={i}>⚠ {w.message}</p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleSave(shot.id)}
+                    disabled={savingId === shot.id}
+                    className="rounded-lg bg-violet-600 px-3 py-1 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                  >
+                    {savingId === shot.id ? "Guardando..." : "Guardar"}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(shot.id)}
+                    className="rounded-lg border border-red-900 px-3 py-1 text-xs text-red-300 hover:bg-red-950"
+                  >
+                    Eliminar
+                  </button>
+                </div>
               </div>
             </div>
           )
         })}
       </div>
+
+      <button onClick={handleAddShot} className="w-full rounded-xl border border-dashed border-zinc-700 py-3 text-sm text-zinc-400 hover:bg-zinc-900">
+        + Agregar shot
+      </button>
     </div>
   )
 }
