@@ -1,8 +1,23 @@
 import "./index.css";
 import { Composition } from "remotion";
 import { Capitulo, FPS, getTotalDurationInFrames, Timeline } from "./Capitulo";
+import { Lyrics, MusicTimeline, getTotalDurationInFrames as getMusicDurationInFrames } from "./Lyrics";
 import { Separador, SEPARADOR_FRAMES } from "./Separador";
 import { Cierre, CIERRE_FRAMES } from "./Cierre";
+
+const EMPTY_MUSIC_TIMELINE: MusicTimeline = {
+  meta: { canal: "", width: 1920, height: 1080, durationInSeconds: 1 },
+  audio: { path: "", volume: 1 },
+  escenas: [],
+  lyrics: { lines: [] },
+};
+
+const LyricsVideoComposition: React.FC<{ timeline: MusicTimeline }> = ({ timeline }) => (
+  <Lyrics timeline={timeline} mode="lyrics" />
+);
+const KaraokeComposition: React.FC<{ timeline: MusicTimeline }> = ({ timeline }) => (
+  <Lyrics timeline={timeline} mode="karaoke" />
+);
 
 const EMPTY_TIMELINE: Timeline = {
   meta: {
@@ -43,6 +58,40 @@ export const RemotionRoot: React.FC = () => {
           const timeline = (props as { timeline: Timeline }).timeline;
           return {
             durationInFrames: Math.max(1, getTotalDurationInFrames(timeline)),
+            width: timeline.meta.width || 1920,
+            height: timeline.meta.height || 1080,
+          };
+        }}
+      />
+      <Composition
+        id="LyricsVideo"
+        component={LyricsVideoComposition}
+        fps={FPS}
+        width={EMPTY_MUSIC_TIMELINE.meta.width}
+        height={EMPTY_MUSIC_TIMELINE.meta.height}
+        durationInFrames={FPS}
+        defaultProps={{ timeline: EMPTY_MUSIC_TIMELINE }}
+        calculateMetadata={async ({ props }) => {
+          const timeline = (props as { timeline: MusicTimeline }).timeline;
+          return {
+            durationInFrames: getMusicDurationInFrames(timeline),
+            width: timeline.meta.width || 1920,
+            height: timeline.meta.height || 1080,
+          };
+        }}
+      />
+      <Composition
+        id="Karaoke"
+        component={KaraokeComposition}
+        fps={FPS}
+        width={EMPTY_MUSIC_TIMELINE.meta.width}
+        height={EMPTY_MUSIC_TIMELINE.meta.height}
+        durationInFrames={FPS}
+        defaultProps={{ timeline: EMPTY_MUSIC_TIMELINE }}
+        calculateMetadata={async ({ props }) => {
+          const timeline = (props as { timeline: MusicTimeline }).timeline;
+          return {
+            durationInFrames: getMusicDurationInFrames(timeline),
             width: timeline.meta.width || 1920,
             height: timeline.meta.height || 1080,
           };

@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.adapters.inbound.api.routers import chapters, jobs, media, projects, providers, sheets, shots, voice_pool
+from app.adapters.inbound.api.routers import chapters, jobs, media, projects, providers, sheets, shots, tracks, voice_pool
 from app.adapters.outbound.jobs.in_process_job_queue import InProcessJobQueue
 from app.adapters.outbound.media.ffprobe_probe import FfprobeMediaProbe
 from app.adapters.outbound.render.remotion_render_adapter import RemotionRenderAdapter
@@ -54,6 +54,7 @@ app.include_router(chapters.router)
 app.include_router(shots.router)
 app.include_router(voice_pool.router)
 app.include_router(sheets.router)
+app.include_router(tracks.router)
 app.include_router(jobs.router)
 app.include_router(providers.router)
 app.include_router(media.router)

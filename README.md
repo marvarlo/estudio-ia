@@ -11,7 +11,7 @@ hexagonal. El plan completo, con las decisiones de arquitectura y la hoja de
 ruta por fases, vive en el doc **"Estudio IA — Arquitectura y plan de
 migración"**.
 
-## Estado: Fase 3 (Render)
+## Estado: Fase 4 (Música — lyrics video / karaoke)
 
 Lo que ya funciona:
 
@@ -45,19 +45,40 @@ Lo que ya funciona:
   una generación puntual); cada render crea un `Asset` de video nuevo sin
   borrar los anteriores, igual que la regla de versionado de la fase 2; el
   video final queda reproducible desde la página del capítulo.
+- **Fase 4 — Música (lyrics video / karaoke):** subir un MP3/WAV crea un
+  proyecto de música (reutiliza `Project`/`Chapter`/`Shot` del dominio de
+  historias — "en música el mismo concepto cubre una ventana de la
+  canción", ya documentado desde la fase 0 — así hereda sin tocarla toda la
+  infraestructura de generación de imagen, versionado y jobs de la fase 2);
+  transcripción real con **Lemonade** (`Whisper-Large-v3-Turbo`, endpoint
+  OpenAI-compatible `/audio/transcriptions`, con timestamps por palabra y
+  flag de "sospechosa" igual que `transcribe.py` del skill
+  `video-clip-creator`); editor simple de líneas de letra (texto/tiempos,
+  no un editor de forma de onda todavía); una línea de letra = un shot,
+  con generación de fondo reutilizando `GenerateShotImageUseCase` sin
+  cambios; render de **LyricsVideo** y **Karaoke** (resaltado palabra a
+  palabra) como composiciones nuevas de Remotion, con la pista maestra
+  sonando de punta a punta y cada escena posicionada en su ventana de
+  tiempo REAL (no secuencial con pausas, como sí hace "Capitulo").
 
 Sin credenciales de proveedores cloud en esta máquina, Gemini/ElevenLabs/
 WAN/Veo/Omni están implementados y cubiertos por tests de contrato
 (payloads verificados contra los scripts originales, sin pegarle a la API
-real), pero solo los proveedores Lemonade y el render con Remotion (100%
-local, no depende de ninguna cloud) están probados end-to-end con
-ejecuciones reales en este entorno.
+real), igual que Demucs (separación de fuentes: sin GPU/PyTorch instalados
+aquí). Lemonade (texto/imagen/TTS/transcripción) y el render con Remotion
+son 100% locales y están probados end-to-end con ejecuciones reales,
+incluyendo un pipeline completo real (canción → transcripción → shots →
+fondos → video de Karaoke) en este entorno.
 
 Lo que falta (ver la hoja de ruta del doc de arquitectura): escritura de
 prosa completa de capítulos por LLM y derivación automática de la hoja de
 producción desde esa prosa, el corte de temporada completa (concatenar
-capítulos con separadores, `RenderPort.concat()`), y todo el pipeline de
-música (demux, transcripción, sincronización, karaoke — fase 4).
+capítulos con separadores, `RenderPort.concat()`), separación de fuentes
+verificada en vivo (Demucs/instrumental para Karaoke — hoy Karaoke usa la
+pista que se suba tal cual), detección de estructura musical (BPM/
+secciones), un editor de sincronización con forma de onda, y el videoclip
+musical animado con cast/escenarios (necesita generación narrativa por LLM
+como canon/cast, no solo transcripción).
 
 ## Estructura
 
@@ -135,6 +156,15 @@ capítulo (o `POST /api/chapters/{id}/render:generate`) arma el
 `timeline.json` a partir de las imágenes/audio ya seleccionados por shot y
 lo renderiza con Remotion -- ver `render/README.md` para el detalle de cómo
 se invoca la CLI.
+
+### Crear un videoclip de letra / karaoke
+
+Desde "+ Nuevo videoclip de letra", subí un MP3/WAV y elegí el tipo
+(Lyrics video o Karaoke). El pipeline es: transcribir (Lemonade, real) →
+revisar/editar las líneas → generar shots desde la letra → generar un fondo
+por shot (Lemonade, reutiliza la misma generación de imagen de historias) →
+renderizar. No hace falta ninguna variable de entorno nueva -- usa el mismo
+`LEMONADE_BASE_URL`.
 
 ### Importar una historia ya producida
 
