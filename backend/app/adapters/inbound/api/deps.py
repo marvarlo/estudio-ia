@@ -11,9 +11,11 @@ from app.adapters.outbound.jobs.in_process_job_queue import InProcessJobQueue
 from app.adapters.outbound.media.ffprobe_probe import FfprobeMediaProbe
 from app.application.ports.job_queue import JobQueuePort
 from app.application.ports.media_probe import MediaProbePort
+from app.application.ports.render import RenderPort
 from app.application.ports.repository import ProjectRepositoryPort
 from app.application.use_cases.generate_shot_image import GenerateShotImageUseCase
 from app.application.use_cases.generate_shot_video import GenerateShotVideoUseCase
+from app.application.use_cases.render_chapter import RenderChapterUseCase
 from app.config.provider_registry import ProviderRegistry
 from app.config.settings import Settings
 
@@ -48,6 +50,10 @@ def get_media_probe(request: Request) -> MediaProbePort:
     return request.app.state.media_probe
 
 
+def get_render_port(request: Request) -> RenderPort:
+    return request.app.state.render_port
+
+
 def resolve_adapter(registry: ProviderRegistry, provider_id: str) -> Any:
     """Resuelve el adaptador configurado para `provider_id`, o 400 con un
     mensaje claro -- los casos de uso de generacion (canon, cast, fichas,
@@ -70,3 +76,9 @@ def build_video_use_case(
 ) -> GenerateShotVideoUseCase:
     adapter = resolve_adapter(registry, provider_id)
     return GenerateShotVideoUseCase(repository, adapter, media_probe, requires_audio=provider_id in _VIDEO_PROVIDERS_REQUIRING_AUDIO)
+
+
+def build_render_use_case(
+    repository: ProjectRepositoryPort, render_port: RenderPort, media_probe: MediaProbePort
+) -> RenderChapterUseCase:
+    return RenderChapterUseCase(repository, render_port, media_probe)

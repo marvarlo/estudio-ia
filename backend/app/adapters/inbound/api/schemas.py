@@ -240,15 +240,19 @@ class ChapterOut(BaseModel):
     titulo: str
     estado: str
     tiene_prosa: bool
+    render_asset_path: str | None = None
 
     @classmethod
-    def from_domain(cls, chapter: Chapter) -> "ChapterOut":
+    def from_domain(cls, chapter: Chapter, assets_by_id: dict[str, Asset] | None = None) -> "ChapterOut":
+        assets_by_id = assets_by_id or {}
+        render_asset = assets_by_id.get(chapter.selected_render_asset_id) if chapter.selected_render_asset_id else None
         return cls(
             id=chapter.id,
             numero=chapter.numero,
             titulo=chapter.titulo,
             estado=chapter.estado.value,
             tiene_prosa=chapter.prosa_path is not None,
+            render_asset_path=str(render_asset.path) if render_asset else None,
         )
 
 
@@ -326,7 +330,7 @@ class ChapterShotsOut(BaseModel):
     def from_domain(cls, chapter: Chapter, shots: list[Shot], assets: list[Asset]) -> "ChapterShotsOut":
         assets_by_id = {asset.id: asset for asset in assets}
         return cls(
-            chapter=ChapterOut.from_domain(chapter),
+            chapter=ChapterOut.from_domain(chapter, assets_by_id),
             shots=[ShotOut.from_domain(s, assets_by_id) for s in shots],
         )
 

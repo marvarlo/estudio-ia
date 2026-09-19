@@ -11,7 +11,7 @@ export function Layout() {
       <aside className="w-56 shrink-0 border-r border-zinc-800 p-4">
         <div className="mb-6 px-2">
           <p className="text-lg font-semibold tracking-tight">Estudio IA</p>
-          <p className="text-xs text-zinc-500">Fase 2 &middot; storyboard</p>
+          <p className="text-xs text-zinc-500">Fase 3 &middot; render</p>
         </div>
         <nav className="space-y-1">
           <NavLink to="/" end className={linkClass}>

@@ -17,6 +17,7 @@ class Settings:
     workspace_dir: Path
     db_path: Path
     stories_root: Path
+    render_project_dir: Path
     lemonade_base_url: str
     gemini_api_key: str | None
     elevenlabs_api_key: str | None
@@ -36,10 +37,14 @@ class Settings:
         # proyecto se creo desde la web o se importo.
         stories_root = Path(secrets.get("ESTUDIO_IA_STORIES_ROOT") or (_REPO_ROOT.parent / "historias"))
         stories_root.mkdir(parents=True, exist_ok=True)
+        # El sidecar de Remotion (fase 3) vive en `render/`, hermano de
+        # `backend/` -- ver render/README.md y RemotionRenderAdapter.
+        render_project_dir = Path(secrets.get("ESTUDIO_IA_RENDER_DIR") or (_REPO_ROOT / "render"))
         return Settings(
             workspace_dir=workspace,
             db_path=db_path,
             stories_root=stories_root,
+            render_project_dir=render_project_dir,
             lemonade_base_url=secrets.get("LEMONADE_BASE_URL") or "http://localhost:13305/api/v1",
             gemini_api_key=secrets.get("GEMINI_API_KEY"),
             elevenlabs_api_key=secrets.get("ELEVENLABS_API_KEY"),

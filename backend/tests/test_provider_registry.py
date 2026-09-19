@@ -9,6 +9,7 @@ def _settings(tmp_path, **overrides) -> Settings:
         workspace_dir=tmp_path,
         db_path=tmp_path / "test.db",
         stories_root=tmp_path / "historias",
+        render_project_dir=tmp_path / "render",
         lemonade_base_url="http://localhost:13305/api/v1",
         gemini_api_key=None,
         elevenlabs_api_key=None,
