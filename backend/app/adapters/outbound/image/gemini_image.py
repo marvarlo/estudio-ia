@@ -35,8 +35,14 @@ def _aspect_ratio_label(width: int, height: int) -> str:
 
 
 def _build_parts(request: ImageGenerationRequest) -> list[dict]:
+    """Fondo/personajes como texto-etiqueta + inline_data intercalados, en el
+    mismo orden que build_multimodal_input() de create_images.py, y el
+    prompt de escena al final -- asi Gemini sabe a que corresponde cada
+    imagen adjunta en vez de recibirlas sueltas."""
     parts: list[dict] = []
-    for ref_path in request.reference_images:
+    for index, ref_path in enumerate(request.reference_images):
+        label = request.reference_labels[index] if index < len(request.reference_labels) else f"Reference Image {index + 1}."
+        parts.append({"text": label})
         parts.append(
             {"inline_data": {"mime_type": "image/png", "data": base64.b64encode(ref_path.read_bytes()).decode()}}
         )

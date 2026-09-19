@@ -15,6 +15,11 @@ class ImageGenerationRequest:
     width: int = 1280
     height: int = 720
     reference_images: list[Path] = field(default_factory=list)
+    # Una etiqueta de texto por referencia (mismo orden que reference_images),
+    # ej. "BACKGROUND ENVIRONMENT: ..." / "CHARACTER 1: ..." -- ver
+    # build_multimodal_input() en create_images.py del skill original. Si se
+    # deja vacia, el adaptador que la soporte usa una etiqueta generica.
+    reference_labels: list[str] = field(default_factory=list)
     seed: int | None = None
     steps: int | None = None
     cfg_scale: float | None = None
