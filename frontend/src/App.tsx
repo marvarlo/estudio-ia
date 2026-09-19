@@ -2,8 +2,10 @@ import { Route, HashRouter, Routes } from "react-router-dom"
 import { Layout } from "./components/Layout"
 import { ProjectsPage } from "./pages/ProjectsPage"
 import { NewProjectPage } from "./pages/NewProjectPage"
+import { NewTrackPage } from "./pages/NewTrackPage"
 import { ProjectDetailPage } from "./pages/ProjectDetailPage"
 import { ChapterPage } from "./pages/ChapterPage"
+import { TrackPage } from "./pages/TrackPage"
 import { ProvidersPage } from "./pages/ProvidersPage"
 
 // HashRouter (no BrowserRouter): sirve como build estatico sin depender de
@@ -16,6 +18,8 @@ function App() {
         <Route element={<Layout />}>
           <Route index element={<ProjectsPage />} />
           <Route path="new" element={<NewProjectPage />} />
+          <Route path="tracks/new" element={<NewTrackPage />} />
+          <Route path="tracks/:trackId" element={<TrackPage />} />
           <Route path="projects/:projectId" element={<ProjectDetailPage />} />
           <Route path="chapters/:chapterId" element={<ChapterPage />} />
           <Route path="providers" element={<ProvidersPage />} />

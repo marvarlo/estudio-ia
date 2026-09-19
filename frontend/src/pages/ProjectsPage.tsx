@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { api, type ImportSummary, type Project } from "../api/client"
 
+const MUSIC_KINDS = new Set(["music_video", "lyrics_video", "karaoke"])
+
 export function ProjectsPage() {
+  const navigate = useNavigate()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -20,6 +23,19 @@ export function ProjectsPage() {
   }
 
   useEffect(reload, [])
+
+  async function openProject(project: Project, event: React.MouseEvent) {
+    if (!MUSIC_KINDS.has(project.kind)) return
+    // Los proyectos de musica no tienen pagina de detalle propia -- van
+    // directo a la pista unica que contienen (ver TrackPage.tsx).
+    event.preventDefault()
+    try {
+      const tracks = await api.listTracksForProject(project.id)
+      if (tracks[0]) navigate(`/tracks/${tracks[0].id}`)
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    }
+  }
 
   async function handleImport(event: React.FormEvent) {
     event.preventDefault()
@@ -91,12 +107,13 @@ export function ProjectsPage() {
             <li key={project.id}>
               <Link
                 to={`/projects/${project.id}`}
+                onClick={(event) => openProject(project, event)}
                 className="flex items-center justify-between px-4 py-3 hover:bg-zinc-800/60"
               >
                 <div>
                   <p className="font-medium text-zinc-100">{project.name}</p>
                   <p className="text-xs text-zinc-500">
-                    {project.slug} &middot; {project.estilo_visual} &middot; {project.tono}
+                    {project.slug} &middot; {MUSIC_KINDS.has(project.kind) ? project.kind : `${project.estilo_visual} · ${project.tono}`}
                   </p>
                 </div>
                 <div className="text-xs text-zinc-500">{project.formatos.join(", ") || "sin assets"}</div>

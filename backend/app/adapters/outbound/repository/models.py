@@ -148,6 +148,30 @@ class JobRow(SQLModel, table=True):
     updated_at: datetime | None = None
 
 
+class TrackRow(SQLModel, table=True):
+    __tablename__ = "tracks"
+
+    id: str = Field(primary_key=True)
+    project_id: str = Field(index=True, foreign_key="projects.id")
+    source_path: str = ""
+    duration_seconds: float | None = None
+    bpm: float | None = None
+    key: str | None = None
+    instrumental_path: str | None = None
+
+
+class LyricLineRow(SQLModel, table=True):
+    __tablename__ = "lyric_lines"
+
+    id: str = Field(primary_key=True)
+    track_id: str = Field(index=True, foreign_key="tracks.id")
+    index: int
+    text: str = ""
+    start: float = 0.0
+    end: float = 0.0
+    words_json: str = "[]"
+
+
 class VoicePoolVoiceRow(SQLModel, table=True):
     __tablename__ = "voice_pool_voices"
 

@@ -30,14 +30,25 @@ hay bundle ni servidor persistente que mantener.
 
 ## Composiciones
 
-- **Capitulo**: la principal. `calculateMetadata` resuelve duracion/
-  resolucion en base al `timeline` recibido (numero de escenas variable por
-  capitulo, a diferencia del prototipo original que asumia un unico
-  `scenes.json` fijo).
+- **Capitulo**: la principal (fase 3). `calculateMetadata` resuelve
+  duracion/resolucion en base al `timeline` recibido (numero de escenas
+  variable por capitulo, a diferencia del prototipo original que asumia un
+  unico `scenes.json` fijo).
+- **LyricsVideo** / **Karaoke** (fase 4, `src/Lyrics.tsx`): comparten
+  componente, solo cambia el prop `mode`. A diferencia de "Capitulo", NO
+  hay audio por escena -- una unica pista maestra (`timeline.audio`) suena
+  de punta a punta, y cada escena se posiciona en su ventana de tiempo REAL
+  (`Sequence` con `from` absoluto en vez de encadenarse con pausas de 1s,
+  que desincronizarian el video del audio). Karaoke ademas resalta cada
+  palabra segun `timeline.lyrics.lines[].words[]` comparando el tiempo
+  absoluto de la cancion contra el `start`/`end` de cada palabra.
 - **Separador** / **Cierre**: piezas sueltas para el corte de TEMPORADA
   COMPLETA (fase 5) -- se renderizan aparte y se concatenan con
   `RenderPort.concat()` (ffmpeg, sin recodificar) junto a los mp4 de cada
   capitulo.
+
+`src/camera.ts` tiene el parseo de "Movimiento Camara" (Ken Burns) --
+compartido por Capitulo y Lyrics, no duplicado.
 
 ## Desarrollo local
 
@@ -59,3 +70,16 @@ la columna "Movimiento Camara", subtitulos quemados con los audio tags
 limpiados, audio real no silencioso, resolucion y duracion tomadas del
 timeline via `calculateMetadata`. Video final servido de vuelta al frontend
 via `/api/media` y reproducible en el navegador.
+
+## Verificado en vivo (fase 4)
+
+Pipeline completo real via la API (no solo props.json de prueba): una
+cancion real ("Noches en B-Wing") transcrita con Lemonade, editada en
+lineas, convertida en shots, con fondos generados por Lemonade, renderizada
+como Karaoke -- resaltado palabra a palabra sincronizado con los timestamps
+reales de la transcripcion, pista maestra sonando de punta a punta, corte a
+negro correcto en los huecos entre lineas (sin escena activa). Encontrado y
+corregido en el camino: el generador de imagen local (Flux-2-Klein-4B)
+tomaba la letra citada entre comillas en el prompt como texto literal a
+dibujar en la imagen -- se solucion o quitando las comillas y reforzando la
+regla anti-texto (ver `GenerateShotsFromLyricsUseCase`).
