@@ -1,0 +1,34 @@
+# Backend (Python / uv)
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+*.pyc
+
+# Datos del usuario: base de datos local y cualquier cosa que el propio
+# backend escriba en runtime. Los proyectos importados NO se copian aca
+# (ver seccion 10 del doc de arquitectura) -- esto solo guarda el .db y
+# archivos temporales.
+workspace/*
+!workspace/.gitkeep
+
+# Frontend (Node / Vite)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Render (Remotion, cuando se agregue en la fase 3)
+render/node_modules/
+render/out/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secretos -- nunca deberian llegar a este repo (ver EnvSecretStore /
+# CredentialManagerSecretStore, seccion 9 del doc de arquitectura)
+.env
+.env.*
+!.env.example
