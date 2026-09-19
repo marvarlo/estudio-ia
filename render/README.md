@@ -34,14 +34,18 @@ hay bundle ni servidor persistente que mantener.
   duracion/resolucion en base al `timeline` recibido (numero de escenas
   variable por capitulo, a diferencia del prototipo original que asumia un
   unico `scenes.json` fijo).
-- **LyricsVideo** / **Karaoke** (fase 4, `src/Lyrics.tsx`): comparten
-  componente, solo cambia el prop `mode`. A diferencia de "Capitulo", NO
-  hay audio por escena -- una unica pista maestra (`timeline.audio`) suena
-  de punta a punta, y cada escena se posiciona en su ventana de tiempo REAL
-  (`Sequence` con `from` absoluto en vez de encadenarse con pausas de 1s,
-  que desincronizarian el video del audio). Karaoke ademas resalta cada
-  palabra segun `timeline.lyrics.lines[].words[]` comparando el tiempo
-  absoluto de la cancion contra el `start`/`end` de cada palabra.
+- **LyricsVideo** / **Karaoke** / **MusicVideo** (fases 4-5, `src/Lyrics.tsx`):
+  comparten componente, solo cambia el prop `mode`. A diferencia de
+  "Capitulo", NO hay audio por escena -- una unica pista maestra
+  (`timeline.audio`) suena de punta a punta, y cada escena se posiciona en
+  su ventana de tiempo REAL (`Sequence` con `from` absoluto en vez de
+  encadenarse con pausas de 1s, que desincronizarian el video del audio).
+  Karaoke ademas resalta cada palabra segun `timeline.lyrics.lines[].words[]`
+  comparando el tiempo absoluto de la cancion contra el `start`/`end` de
+  cada palabra. MusicVideo oculta los subtitulos por completo (el
+  videoclip animado no muestra letra en pantalla) -- sus shots vienen en
+  ventanas de ~8s cortadas en el beat con personaje/escenario consistentes,
+  ver `GenerateMusicVideoShotsUseCase`.
 - **Separador** / **Cierre**: piezas sueltas para el corte de TEMPORADA
   COMPLETA (fase 5) -- se renderizan aparte y se concatenan con
   `RenderPort.concat()` (ffmpeg, sin recodificar) junto a los mp4 de cada
@@ -83,3 +87,29 @@ corregido en el camino: el generador de imagen local (Flux-2-Klein-4B)
 tomaba la letra citada entre comillas en el prompt como texto literal a
 dibujar en la imagen -- se solucion o quitando las comillas y reforzando la
 regla anti-texto (ver `GenerateShotsFromLyricsUseCase`).
+
+## Verificado en vivo (fase 5)
+
+Pipeline completo real del videoclip animado: elenco generado por LLM a
+partir de la letra transcrita, beats reales detectados con librosa (140.6
+BPM en un test con musica real), 4 shots en ventanas de ~8s cortadas en el
+beat, fondos generados por Lemonade con personaje/escenario CONSISTENTES en
+las 4 escenas (mismo protagonista, mismo club B-Wing con luces rojas/azules)
+gracias a reutilizar `GenerateShotImageUseCase` sin tocarla, renderizado como
+MusicVideo sin subtitulos, audio real de punta a punta.
+
+**Bug real encontrado y corregido ANTES de renderizar** (revision de codigo,
+no en producción): `BuildMusicTimelineUseCase` reconstruia el tiempo
+absoluto de cada shot buscando la linea de letra en la misma posicion de
+indice (`lines[i]`) -- funcionaba por casualidad con LyricsVideo/Karaoke
+(una linea = un shot, 1:1), pero con las ventanas de beat del videoclip
+animado (mas shots que lineas) generaba tiempos superpuestos e incorrectos.
+Se agrego `Shot.start_seg` (tiempo absoluto propio de cada shot) como fuente
+de verdad para todos los productos de musica.
+
+**Limitacion real observada, mitigada pero no eliminada**: el generador de
+imagen local alucina texto garabateado sobre ropa descripta como "band
+t-shirt"/"printed logo" (mismo tipo de problema que las comillas de la fase
+4, causa distinta) -- se agrego una regla al prompt de casting pidiendo
+describir la ropa por corte/color/material en vez de por lo que dice o
+representa, sin una segunda verificacion en vivo por tiempo.

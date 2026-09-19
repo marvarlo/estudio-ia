@@ -25,7 +25,7 @@ export type MusicTimeline = {
   lyrics: { lines: LyricLineTiming[] };
 };
 
-export type LyricsProps = { timeline: MusicTimeline; mode: "lyrics" | "karaoke" };
+export type LyricsProps = { timeline: MusicTimeline; mode: "lyrics" | "karaoke" | "music" };
 
 export const getTotalDurationInFrames = (timeline: MusicTimeline) =>
   Math.max(1, Math.round(timeline.meta.durationInSeconds * FPS));
@@ -49,7 +49,7 @@ const KaraokeLine: React.FC<{ line: LyricLineTiming; absoluteTimeSeconds: number
   </>
 );
 
-const SceneView: React.FC<{ scene: MusicScene; line: LyricLineTiming | undefined; mode: "lyrics" | "karaoke" }> = ({
+const SceneView: React.FC<{ scene: MusicScene; line: LyricLineTiming | undefined; mode: "lyrics" | "karaoke" | "music" }> = ({
   scene,
   line,
   mode,
@@ -71,31 +71,35 @@ const SceneView: React.FC<{ scene: MusicScene; line: LyricLineTiming | undefined
           src={staticFile(scene.imagen)}
           style={{ width: "100%", height: "100%", objectFit: "cover", ...cameraStyle(move, frame, durationInFrames) }}
         />
-        <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: 96 }}>
-          <div
-            style={{
-              maxWidth: "85%",
-              fontFamily: "sans-serif",
-              fontSize: 40,
-              fontWeight: 700,
-              textAlign: "center",
-              textShadow: "0 2px 12px rgba(0,0,0,0.9)",
-              background: "rgba(0,0,0,0.4)",
-              padding: "18px 32px",
-              borderRadius: 14,
-              color: "white",
-            }}
-          >
-            {mode === "karaoke" && line ? <KaraokeLine line={line} absoluteTimeSeconds={absoluteTimeSeconds} /> : scene.subtitulo}
-          </div>
-        </AbsoluteFill>
+        {mode === "music" ? null : (
+          <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", paddingBottom: 96 }}>
+            <div
+              style={{
+                maxWidth: "85%",
+                fontFamily: "sans-serif",
+                fontSize: 40,
+                fontWeight: 700,
+                textAlign: "center",
+                textShadow: "0 2px 12px rgba(0,0,0,0.9)",
+                background: "rgba(0,0,0,0.4)",
+                padding: "18px 32px",
+                borderRadius: 14,
+                color: "white",
+              }}
+            >
+              {mode === "karaoke" && line ? <KaraokeLine line={line} absoluteTimeSeconds={absoluteTimeSeconds} /> : scene.subtitulo}
+            </div>
+          </AbsoluteFill>
+        )}
       </AbsoluteFill>
     </AbsoluteFill>
   );
 };
 
-// LyricsVideo y Karaoke comparten esta composicion (solo cambia `mode`,
-// fijo por Composition en Root.tsx) -- ambas reciben el mismo timeline con
+// LyricsVideo, Karaoke y MusicVideo comparten esta composicion (solo
+// cambia `mode`, fijo por Composition en Root.tsx -- "music" oculta los
+// subtitulos por completo, ya que el videoclip animado no muestra letra en
+// pantalla) -- las tres reciben el mismo timeline con
 // UNA pista maestra de audio en vez de audio por escena (a diferencia de
 // Capitulo.tsx), asi que cada escena se posiciona en su ventana de tiempo
 // REAL (Sequence con `from` absoluto) en vez de encadenarse con pausas de

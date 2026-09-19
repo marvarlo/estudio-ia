@@ -8,8 +8,8 @@ from app.application.ports.render import RenderRequest, RenderResult
 from app.application.use_cases.music_track import CreateTrackProjectUseCase, GenerateShotsFromLyricsUseCase
 from app.application.use_cases.render_music_video import BuildMusicTimelineUseCase, RenderMusicVideoUseCase
 from app.domain.music.entities import LyricLine
-from app.domain.shared.value_objects import AssetKind, ChapterStatus
-from app.domain.story.entities import Asset
+from app.domain.shared.value_objects import AssetKind, ChapterStatus, ShotType
+from app.domain.story.entities import Asset, Shot
 
 
 class FakeMediaProbe:
@@ -111,3 +111,68 @@ async def test_render_music_video_rejects_unknown_composition(tmp_path, reposito
         await RenderMusicVideoUseCase(repository, FakeRenderPort(), FakeMediaProbe()).execute(
             result.chapter.id, result.track.id, "Capitulo"
         )
+
+
+def test_build_music_timeline_uses_shot_start_seg_not_line_index(tmp_path, repository):
+    """Regresion: con MAS shots que lineas de letra (videoclip animado, una
+    ventana de beat puede no coincidir 1:1 con una linea), el timeline debia
+    seguir usando el tiempo absoluto propio de CADA shot -- antes del fix,
+    el codigo reconstruia start/end buscando `lines[i]` por indice, lo que
+    con shots ventaneados producia tiempos superpuestos/incorrectos."""
+    result = CreateTrackProjectUseCase(repository, tmp_path, FakeMediaProbe(30.0)).execute(
+        name="Windowed Test", kind="music_video", audio_bytes=b"x", audio_filename="song.mp3"
+    )
+    lines = [LyricLine(id="l1", track_id=result.track.id, index=0, text="unica linea", start=0.0, end=2.0)]
+    repository.replace_lyric_lines(result.track.id, lines)
+
+    # 3 shots (ventanas), UNA sola linea de letra -- el caso que rompia el
+    # indexado por linea.
+    shots = [
+        Shot(id="s1", chapter_id=result.chapter.id, orden=1, tipo=ShotType.LETRA, start_seg=0.0, duracion_estimada_seg=8.0),
+        Shot(id="s2", chapter_id=result.chapter.id, orden=2, tipo=ShotType.INSTRUMENTAL, start_seg=8.0, duracion_estimada_seg=8.0),
+        Shot(id="s3", chapter_id=result.chapter.id, orden=3, tipo=ShotType.INSTRUMENTAL, start_seg=16.0, duracion_estimada_seg=8.0),
+    ]
+    assets_dir = result.project.root_path / "capitulo-1" / "assets" / "1280x720" / "imagenes"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    for shot in shots:
+        img_path = assets_dir / f"{shot.id}.png"
+        img_path.write_bytes(b"fake-png")
+        asset = Asset(
+            id=str(uuid.uuid4()), project_id=result.project.id, chapter_id=result.chapter.id, shot_id=shot.id,
+            kind=AssetKind.IMAGE, path=img_path, width=1280, height=720, created_at=datetime.now(timezone.utc),
+        )
+        repository.save_asset(asset)
+        shot.selected_image_asset_id = asset.id
+    repository.replace_shots(result.chapter.id, shots)
+
+    timeline, _public_dir, _w, _h = BuildMusicTimelineUseCase(repository, FakeMediaProbe(30.0)).execute(
+        result.chapter.id, result.track.id
+    )
+
+    escenas = timeline["escenas"]
+    assert [e["start"] for e in escenas] == [0.0, 8.0, 16.0]
+    assert [e["end"] for e in escenas] == [8.0, 16.0, 24.0]
+    # Sin huecos ni superposiciones entre ventanas consecutivas.
+    for a, b in zip(escenas, escenas[1:]):
+        assert a["end"] == b["start"]
+
+
+def test_build_music_timeline_raises_without_start_seg(tmp_path, repository):
+    result = CreateTrackProjectUseCase(repository, tmp_path, FakeMediaProbe(30.0)).execute(
+        name="Missing Start Seg", kind="music_video", audio_bytes=b"x", audio_filename="song.mp3"
+    )
+    shot = Shot(id="s1", chapter_id=result.chapter.id, orden=1, tipo=ShotType.INSTRUMENTAL, duracion_estimada_seg=8.0)
+    assets_dir = result.project.root_path / "capitulo-1" / "assets" / "1280x720" / "imagenes"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    img_path = assets_dir / "s1.png"
+    img_path.write_bytes(b"fake-png")
+    asset = Asset(
+        id=str(uuid.uuid4()), project_id=result.project.id, chapter_id=result.chapter.id, shot_id=shot.id,
+        kind=AssetKind.IMAGE, path=img_path, width=1280, height=720, created_at=datetime.now(timezone.utc),
+    )
+    repository.save_asset(asset)
+    shot.selected_image_asset_id = asset.id
+    repository.replace_shots(result.chapter.id, [shot])
+
+    with pytest.raises(ValueError, match="start_seg"):
+        BuildMusicTimelineUseCase(repository, FakeMediaProbe(30.0)).execute(result.chapter.id, result.track.id)

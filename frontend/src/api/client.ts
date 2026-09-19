@@ -213,6 +213,13 @@ export type LyricLine = {
   words: LyricWordTiming[]
 }
 
+// Videoclip musical animado (fase 5): elenco propio (sin canon) + shots por
+// ventana de 8s cortada en el beat, en vez de una linea = un shot.
+export type MusicCastResult = {
+  characters: Character[]
+  locations: Location[]
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -350,7 +357,7 @@ export const api = {
   testProvider: (providerId: string) => request<ProviderHealth>(`/api/providers/${providerId}/test`, { method: "POST" }),
 
   // Musica (fase 4): pistas, letra transcrita, render de lyrics/karaoke
-  createTrack: async (data: { name: string; kind: "lyrics_video" | "karaoke"; file: File }): Promise<TrackProjectResult> => {
+  createTrack: async (data: { name: string; kind: "lyrics_video" | "karaoke" | "music_video"; file: File }): Promise<TrackProjectResult> => {
     const form = new FormData()
     form.append("name", data.name)
     form.append("kind", data.kind)
@@ -374,7 +381,14 @@ export const api = {
     request<LyricLine>(`/api/tracks/lines/${lineId}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteLyricLine: (lineId: string) => request<void>(`/api/tracks/lines/${lineId}`, { method: "DELETE" }),
   generateShotsFromLyrics: (trackId: string) => request<Shot[]>(`/api/tracks/${trackId}/shots:generate`, { method: "POST" }),
-  renderMusicVideo: (trackId: string, compositionId: "LyricsVideo" | "Karaoke") =>
+  generateMusicCast: (trackId: string, data: { estilo_visual: string; notas: string; provider_id: string }) =>
+    request<MusicCastResult>(`/api/tracks/${trackId}/cast:generate`, { method: "POST", body: JSON.stringify(data) }),
+  generateMusicVideoShots: (trackId: string, windowSeconds = 8.0) =>
+    request<Shot[]>(`/api/tracks/${trackId}/shots:generate-windows`, {
+      method: "POST",
+      body: JSON.stringify({ window_seconds: windowSeconds }),
+    }),
+  renderMusicVideo: (trackId: string, compositionId: "LyricsVideo" | "Karaoke" | "MusicVideo") =>
     request<Job>(`/api/tracks/${trackId}/render:generate`, {
       method: "POST",
       body: JSON.stringify({ composition_id: compositionId }),

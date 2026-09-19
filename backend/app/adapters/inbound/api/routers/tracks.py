@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from app.adapters.inbound.api.deps import (
     get_job_queue,
     get_media_probe,
+    get_music_analysis_port,
     get_provider_registry,
     get_render_port,
     get_repository,
@@ -14,10 +15,13 @@ from app.adapters.inbound.api.deps import (
     resolve_adapter,
 )
 from app.adapters.inbound.api.schemas import (
+    CastGenerationOut,
     JobOut,
     LyricLineOut,
     LyricLineUpdateRequest,
+    MusicCastGenerateRequest,
     MusicRenderRequest,
+    MusicShotsWindowRequest,
     ShotOut,
     TrackOut,
     TrackProjectOut,
@@ -27,6 +31,8 @@ from app.application.ports.job_queue import JobQueuePort
 from app.application.use_cases.music_track import (
     CreateTrackProjectUseCase,
     DeleteLyricLineUseCase,
+    GenerateMusicCastUseCase,
+    GenerateMusicVideoShotsUseCase,
     GenerateShotsFromLyricsUseCase,
     TrackProject,
     TranscribeTrackUseCase,
@@ -34,6 +40,7 @@ from app.application.use_cases.music_track import (
 )
 from app.application.use_cases.render_music_video import RenderMusicVideoUseCase
 from app.domain.jobs.entities import Job
+from app.prompts.music_cast import MusicCastBrief
 
 router = APIRouter(prefix="/api/tracks", tags=["tracks"])
 
@@ -135,6 +142,49 @@ def generate_shots(track_id: str, repository=Depends(get_repository)) -> list[Sh
     _project, chapter = _chapter_for_track(repository, track)
     try:
         shots = GenerateShotsFromLyricsUseCase(repository).execute(chapter.id, track_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return [ShotOut.from_domain(s) for s in shots]
+
+
+@router.post("/{track_id}/cast:generate", response_model=CastGenerationOut)
+async def generate_music_cast(
+    track_id: str,
+    payload: MusicCastGenerateRequest,
+    repository=Depends(get_repository),
+    registry=Depends(get_provider_registry),
+) -> CastGenerationOut:
+    """Elenco visual para el videoclip animado (fase 5) -- a partir de la
+    letra ya transcrita, no de un canon (los proyectos de musica no tienen
+    uno). Sincrono, igual que /cast:generate de historias en la fase 1."""
+    text_port = resolve_adapter(registry, payload.provider_id)
+    brief = MusicCastBrief(estilo_visual=payload.estilo_visual, notas=payload.notas)
+    try:
+        result = await GenerateMusicCastUseCase(repository, text_port).execute(track_id, brief)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CastGenerationOut.from_domain(result)
+
+
+@router.post("/{track_id}/shots:generate-windows", response_model=list[ShotOut])
+async def generate_music_video_shots(
+    track_id: str,
+    payload: MusicShotsWindowRequest,
+    repository=Depends(get_repository),
+    music_analysis_port=Depends(get_music_analysis_port),
+) -> list[ShotOut]:
+    """Ventanas de ~8s cortadas en el beat (videoclip animado, fase 5) --
+    distinto de /shots:generate (una linea = un shot, usado por lyrics/
+    karaoke): este no muestra letra en pantalla, asi que el corte sigue el
+    ritmo de la cancion, no los limites de linea."""
+    track = repository.get_track(track_id)
+    if track is None:
+        raise HTTPException(status_code=404, detail="Pista no encontrada")
+    _project, chapter = _chapter_for_track(repository, track)
+    try:
+        shots = await GenerateMusicVideoShotsUseCase(repository, music_analysis_port).execute(
+            chapter.id, track_id, window_seconds=payload.window_seconds
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return [ShotOut.from_domain(s) for s in shots]

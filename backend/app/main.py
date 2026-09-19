@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.adapters.inbound.api.routers import chapters, jobs, media, projects, providers, sheets, shots, tracks, voice_pool
+from app.adapters.outbound.analysis.librosa_music_analysis import LibrosaMusicAnalysisAdapter
 from app.adapters.outbound.jobs.in_process_job_queue import InProcessJobQueue
 from app.adapters.outbound.media.ffprobe_probe import FfprobeMediaProbe
 from app.adapters.outbound.render.remotion_render_adapter import RemotionRenderAdapter
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI):
     app.state.job_queue = InProcessJobQueue(app.state.repository)
     app.state.media_probe = FfprobeMediaProbe()
     app.state.render_port = RemotionRenderAdapter(settings.render_project_dir, app.state.media_probe)
+    app.state.music_analysis_port = LibrosaMusicAnalysisAdapter()
 
     yield
 

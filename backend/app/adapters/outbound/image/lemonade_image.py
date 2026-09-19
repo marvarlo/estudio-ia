@@ -80,7 +80,12 @@ class LemonadeImageAdapter:
                     last_error = exc
                 except httpx.HTTPError as exc:
                     last_error = exc
-        raise RuntimeError(f"No se pudo generar la imagen en ningun endpoint de {self._base_url}. Ultimo error: {last_error}")
+        # str(last_error) puede venir vacio para ciertas excepciones de httpx
+        # (ej. ReadTimeout sin mensaje) -- verificado en vivo mas de una vez,
+        # dejando "Ultimo error: " sin nada util despues. Cae al nombre de
+        # la clase cuando pasa, mismo criterio que in_process_job_queue.py.
+        detail = str(last_error) or (type(last_error).__name__ if last_error else "sin detalle")
+        raise RuntimeError(f"No se pudo generar la imagen en ningun endpoint de {self._base_url}. Ultimo error: {detail}")
 
     async def health_check(self) -> ProviderHealth:
         start = time.perf_counter()

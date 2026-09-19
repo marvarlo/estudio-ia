@@ -72,6 +72,7 @@ class ShotRow(SQLModel, table=True):
     duracion_real_seg: float | None = None
     sfx_musica: str = ""
     voice_id: str | None = None
+    start_seg: float | None = None
     selected_image_asset_id: str | None = None
     selected_audio_asset_id: str | None = None
     selected_video_asset_id: str | None = None

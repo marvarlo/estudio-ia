@@ -9,7 +9,7 @@ import { api } from "../api/client"
 export function NewTrackPage() {
   const navigate = useNavigate()
   const [name, setName] = useState("")
-  const [kind, setKind] = useState<"lyrics_video" | "karaoke">("lyrics_video")
+  const [kind, setKind] = useState<"lyrics_video" | "karaoke" | "music_video">("lyrics_video")
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -31,11 +31,11 @@ export function NewTrackPage() {
 
   return (
     <div className="mx-auto max-w-xl space-y-4">
-      <h1 className="text-2xl font-semibold">Nuevo videoclip de letra / karaoke</h1>
+      <h1 className="text-2xl font-semibold">Nuevo videoclip musical</h1>
       <p className="text-sm text-zinc-400">
-        Subi un MP3/WAV -- el pipeline transcribe la letra con timestamps reales, genera un fondo por
-        linea, y renderiza un video con la letra sincronizada (con resaltado de palabra a palabra en
-        modo Karaoke).
+        Subi un MP3/WAV -- el pipeline transcribe la letra con timestamps reales. Lyrics video y
+        Karaoke generan un fondo por linea; el Videoclip animado genera ademas un elenco propio y
+        shots en ventanas de ~8s cortadas en el beat de la cancion.
       </p>
       <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
         <div>
@@ -51,11 +51,12 @@ export function NewTrackPage() {
           <label className="mb-1 block text-xs text-zinc-400">Tipo de producto</label>
           <select
             value={kind}
-            onChange={(e) => setKind(e.target.value as "lyrics_video" | "karaoke")}
+            onChange={(e) => setKind(e.target.value as "lyrics_video" | "karaoke" | "music_video")}
             className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
           >
             <option value="lyrics_video">Lyrics video (letra sincronizada)</option>
             <option value="karaoke">Karaoke (resaltado palabra a palabra)</option>
+            <option value="music_video">Videoclip animado (cast + cortes en el beat)</option>
           </select>
         </div>
         <div>

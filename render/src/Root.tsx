@@ -18,6 +18,9 @@ const LyricsVideoComposition: React.FC<{ timeline: MusicTimeline }> = ({ timelin
 const KaraokeComposition: React.FC<{ timeline: MusicTimeline }> = ({ timeline }) => (
   <Lyrics timeline={timeline} mode="karaoke" />
 );
+const MusicVideoComposition: React.FC<{ timeline: MusicTimeline }> = ({ timeline }) => (
+  <Lyrics timeline={timeline} mode="music" />
+);
 
 const EMPTY_TIMELINE: Timeline = {
   meta: {
@@ -83,6 +86,23 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="Karaoke"
         component={KaraokeComposition}
+        fps={FPS}
+        width={EMPTY_MUSIC_TIMELINE.meta.width}
+        height={EMPTY_MUSIC_TIMELINE.meta.height}
+        durationInFrames={FPS}
+        defaultProps={{ timeline: EMPTY_MUSIC_TIMELINE }}
+        calculateMetadata={async ({ props }) => {
+          const timeline = (props as { timeline: MusicTimeline }).timeline;
+          return {
+            durationInFrames: getMusicDurationInFrames(timeline),
+            width: timeline.meta.width || 1920,
+            height: timeline.meta.height || 1080,
+          };
+        }}
+      />
+      <Composition
+        id="MusicVideo"
+        component={MusicVideoComposition}
         fps={FPS}
         width={EMPTY_MUSIC_TIMELINE.meta.width}
         height={EMPTY_MUSIC_TIMELINE.meta.height}

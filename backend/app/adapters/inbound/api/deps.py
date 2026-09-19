@@ -11,6 +11,7 @@ from app.adapters.outbound.jobs.in_process_job_queue import InProcessJobQueue
 from app.adapters.outbound.media.ffprobe_probe import FfprobeMediaProbe
 from app.application.ports.job_queue import JobQueuePort
 from app.application.ports.media_probe import MediaProbePort
+from app.application.ports.music_analysis import MusicAnalysisPort
 from app.application.ports.render import RenderPort
 from app.application.ports.repository import ProjectRepositoryPort
 from app.application.use_cases.generate_shot_image import GenerateShotImageUseCase
@@ -52,6 +53,10 @@ def get_media_probe(request: Request) -> MediaProbePort:
 
 def get_render_port(request: Request) -> RenderPort:
     return request.app.state.render_port
+
+
+def get_music_analysis_port(request: Request) -> MusicAnalysisPort:
+    return request.app.state.music_analysis_port
 
 
 def resolve_adapter(registry: ProviderRegistry, provider_id: str) -> Any:

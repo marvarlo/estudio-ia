@@ -22,13 +22,19 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.adapters.outbound.storage.cast_writer import write_escenarios_json, write_personajes_json
+from app.adapters.outbound.storage.llm_json import extract_json
 from app.application.ports.media_probe import MediaProbePort
+from app.application.ports.music_analysis import MusicAnalysisPort
 from app.application.ports.repository import ProjectRepositoryPort
+from app.application.ports.text_generation import TextGenerationPort, TextGenerationRequest
 from app.application.ports.transcription import TranscriptionPort
 from app.application.use_cases.chapter_editing import CreateChapterUseCase
+from app.application.use_cases.story_generation import CastGenerationResult
 from app.domain.music.entities import LyricLine, LyricWord, Track
 from app.domain.shared.value_objects import ProjectKind, ShotType, Tone
-from app.domain.story.entities import Chapter, Project, Shot
+from app.domain.story.entities import Chapter, Character, Location, Project, Shot
+from app.prompts.music_cast import MusicCastBrief, build_music_cast_prompt
 
 _NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://estudio-ia.local/")
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -230,8 +236,175 @@ class GenerateShotsFromLyricsUseCase:
                     "Mood lighting, painterly, no characters unless clearly implied."
                 ),
                 duracion_estimada_seg=max(line.end - line.start, 1.0),
+                start_seg=line.start,
             )
             for i, line in enumerate(sorted(lines, key=lambda l: l.start), start=1)
         ]
         self._repository.replace_shots(chapter_id, shots)
         return shots
+
+
+class GenerateMusicCastUseCase:
+    """Elenco visual para el VIDEOCLIP MUSICAL ANIMADO (fase 5) -- version de
+    GenerateCastUseCase (fase 1) que parte de la letra transcrita en vez de
+    un canon, porque un proyecto de musica no tiene canon. Duplica el
+    mapeo JSON->Character/Location de proposito: las precondiciones son
+    genuinamente distintas (letra vs. canon+temporada), forzarlas a una
+    sola funcion las acoplaria sin necesidad real."""
+
+    def __init__(self, repository: ProjectRepositoryPort, text_port: TextGenerationPort) -> None:
+        self._repository = repository
+        self._text_port = text_port
+
+    async def execute(self, track_id: str, brief: MusicCastBrief) -> CastGenerationResult:
+        track = self._repository.get_track(track_id)
+        if track is None:
+            raise ValueError(f"Pista no encontrada: {track_id}")
+        project = self._repository.get_project(track.project_id)
+        if project is None:
+            raise ValueError(f"Proyecto no encontrado: {track.project_id}")
+        lines = self._repository.list_lyric_lines(track_id)
+        if not lines:
+            raise ValueError("Esta pista todavia no tiene letra transcrita -- transcribila primero")
+
+        lyrics_text = "\n".join(line.text for line in sorted(lines, key=lambda l: l.start))
+        system, user = build_music_cast_prompt(lyrics_text, brief)
+        result = await self._text_port.generate(
+            TextGenerationRequest(prompt=user, system=system, max_tokens=4000, temperature=0.9, json_mode=True)
+        )
+        try:
+            data = extract_json(result.text)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(
+                f"El modelo no devolvio JSON valido para el cast del videoclip: {exc}\n\nRespuesta cruda:\n{result.text[:2000]}"
+            ) from exc
+
+        characters: list[Character] = []
+        for raw in data.get("personajes", []):
+            slug = raw.get("id") or _slugify(raw.get("nombre", "personaje"))
+            tokens = {
+                "descripcion_corta": raw.get("descripcion_corta", ""),
+                "cabello": raw.get("cabello", ""),
+                "ojos": raw.get("ojos", ""),
+                "marca_distintiva": raw.get("marca_distintiva", ""),
+                "atuendo_base": raw.get("atuendo_base", ""),
+                "prompt_anchor": raw.get("prompt_anchor", ""),
+            }
+            character = Character(
+                id=str(uuid.uuid4()), project_id=project.id, slug=slug, nombre=raw.get("nombre", slug),
+                rol=raw.get("rol", "protagonista"), prompt_anchor=tokens["prompt_anchor"], tokens_visuales=tokens,
+            )
+            self._repository.save_character(character)
+            characters.append(character)
+
+        locations: list[Location] = []
+        for raw in data.get("escenarios", []):
+            slug = raw.get("id") or _slugify(raw.get("nombre", "escenario"))
+            location = Location(
+                id=str(uuid.uuid4()), project_id=project.id, slug=slug,
+                nombre=raw.get("nombre", slug), descripcion_fija=raw.get("descripcion_fija", ""),
+            )
+            self._repository.save_location(location)
+            locations.append(location)
+
+        write_personajes_json(project.root_path, project.slug, characters)
+        write_escenarios_json(project.root_path, project.slug, locations)
+        return CastGenerationResult(characters=characters, locations=locations)
+
+
+_CAMERA_CYCLE = ("zoom in lento", "pan derecha", "zoom out lento", "pan izquierda", "estatico")
+
+
+class GenerateMusicVideoShotsUseCase:
+    """Ventanas de ~8s "cortadas en el beat" (seccion 7 del doc de
+    arquitectura, fase 5) en vez de una linea = un shot -- a diferencia de
+    LyricsVideo/Karaoke, ESTE producto no muestra letra en pantalla, asi que
+    el corte no tiene que respetar limites de linea, solo el ritmo de la
+    cancion. Requiere que el cast (GenerateMusicCastUseCase) ya exista para
+    que las imagenes salgan con personaje/escenario consistentes -- si
+    todavia no hay cast, los shots salen sin personaje/escenario asignado
+    (igual generan una imagen, solo que sin anclaje de identidad)."""
+
+    def __init__(self, repository: ProjectRepositoryPort, music_analysis_port: MusicAnalysisPort) -> None:
+        self._repository = repository
+        self._music_analysis_port = music_analysis_port
+
+    async def execute(self, chapter_id: str, track_id: str, *, window_seconds: float = 8.0) -> list[Shot]:
+        track = self._repository.get_track(track_id)
+        if track is None:
+            raise ValueError(f"Pista no encontrada: {track_id}")
+        project = self._repository.get_project(track.project_id)
+        if project is None:
+            raise ValueError(f"Proyecto no encontrado: {track.project_id}")
+        lines = sorted(self._repository.list_lyric_lines(track_id), key=lambda l: l.start)
+        characters = self._repository.list_characters(project.id)
+        locations = self._repository.list_locations(project.id)
+
+        total_duration = track.duration_seconds
+        if total_duration is None:
+            total_duration = lines[-1].end if lines else window_seconds
+        if not total_duration or total_duration <= 0:
+            raise ValueError("No se pudo determinar la duracion de la pista")
+
+        analysis = await self._music_analysis_port.analyze(Path(track.source_path))
+        beats = sorted(analysis.beats)
+
+        windows = _build_beat_aligned_windows(total_duration, window_seconds, beats)
+        character_slugs = [c.slug for c in characters]
+        location_slug = locations[0].slug if locations else None
+
+        shots: list[Shot] = []
+        for i, (start, end) in enumerate(windows, start=1):
+            overlapping = [l.text for l in lines if l.start < end and l.end > start]
+            content_hint = " ".join(overlapping).strip()
+            if content_hint:
+                tipo = ShotType.LETRA
+                prompt_imagen = (
+                    f"Cinematic music video shot capturing the mood of: {_paraphrase_hint(content_hint)}. "
+                    "Dynamic pose, expressive performance, dramatic lighting, no readable text or captions."
+                )
+            else:
+                tipo = ShotType.INSTRUMENTAL
+                prompt_imagen = (
+                    "Cinematic instrumental interlude shot, atmospheric mood matching the song's energy, "
+                    "dynamic camera composition, no readable text or captions."
+                )
+            shots.append(
+                Shot(
+                    id=str(uuid.uuid4()),
+                    chapter_id=chapter_id,
+                    orden=i,
+                    tipo=tipo,
+                    personaje_ids=list(character_slugs),
+                    escenario_id=location_slug,
+                    texto=content_hint,
+                    prompt_imagen=prompt_imagen,
+                    movimiento_camara=_CAMERA_CYCLE[i % len(_CAMERA_CYCLE)],
+                    duracion_estimada_seg=round(end - start, 3),
+                    start_seg=round(start, 3),
+                )
+            )
+
+        self._repository.replace_shots(chapter_id, shots)
+        return shots
+
+
+def _build_beat_aligned_windows(total_duration: float, window_seconds: float, beats: list[float]) -> list[tuple[float, float]]:
+    """Arranca cada ventana en ~`window_seconds` desde el inicio de la
+    anterior, pero ajusta el corte al beat mas cercano dentro de +-1.5s si
+    hay datos de beat reales -- si no (analisis fallido, o el archivo no
+    tenia beats detectables), cae a ventanas fijas."""
+    tolerance = 1.5
+    windows: list[tuple[float, float]] = []
+    start = 0.0
+    while start < total_duration - 0.5:
+        raw_end = min(start + window_seconds, total_duration)
+        end = raw_end
+        if beats and raw_end < total_duration:
+            candidates = [b for b in beats if abs(b - raw_end) <= tolerance and b > start]
+            if candidates:
+                end = min(candidates, key=lambda b: abs(b - raw_end))
+        end = min(max(end, start + 1.0), total_duration)
+        windows.append((start, end))
+        start = end
+    return windows

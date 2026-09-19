@@ -59,16 +59,26 @@ class BuildMusicTimelineUseCase:
         width = height = None
         escenas: list[dict[str, Any]] = []
         ordered_shots = sorted(shots, key=lambda s: s.orden)
-        for i, shot in enumerate(ordered_shots):
+        for shot in ordered_shots:
             image_asset = assets_by_id.get(shot.selected_image_asset_id) if shot.selected_image_asset_id else None
             if image_asset is None:
                 raise ValueError(f"El shot #{shot.orden} todavia no tiene una imagen de fondo seleccionada")
             if width is None:
                 width, height = image_asset.width or DEFAULT_WIDTH, image_asset.height or DEFAULT_HEIGHT
 
-            line = lines[i] if i < len(lines) else None
-            start = line.start if line else 0.0
-            end = line.end if line else start + (shot.duracion_estimada_seg or 3.0)
+            # `start_seg` es la fuente de verdad del tiempo absoluto de ESTE
+            # shot en la pista maestra -- NUNCA se reconstruye buscando la
+            # linea de letra en la misma posicion de indice, porque un shot
+            # no es necesariamente una linea (el videoclip animado tiene
+            # varios shots por ventana de 8s, sin correspondencia 1:1 con
+            # las lineas). Bug real encontrado en la fase 5 antes de
+            # verificar en vivo: con "una linea = un shot" (lyrics/karaoke)
+            # coincidia por casualidad de indice, pero con ventanas de beat
+            # generaba tiempos superpuestos/incorrectos.
+            if shot.start_seg is None:
+                raise ValueError(f"El shot #{shot.orden} no tiene start_seg -- regeneralo desde la letra")
+            start = shot.start_seg
+            end = start + (shot.duracion_estimada_seg or 3.0)
             escenas.append(
                 {
                     "numero": f"{shot.orden:02d}",
@@ -120,7 +130,7 @@ class RenderMusicVideoUseCase:
         self._timeline_use_case = BuildMusicTimelineUseCase(repository, media_probe)
 
     async def execute(self, chapter_id: str, track_id: str, composition_id: str) -> Any:
-        if composition_id not in ("LyricsVideo", "Karaoke"):
+        if composition_id not in ("LyricsVideo", "Karaoke", "MusicVideo"):
             raise ValueError(f"composition_id desconocido para musica: {composition_id}")
 
         chapter = self._repository.get_chapter(chapter_id)

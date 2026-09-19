@@ -83,6 +83,12 @@ class Shot:
     duracion_estimada_seg: float | None = None
     duracion_real_seg: float | None = None
     sfx_musica: str = ""
+    # Tiempo absoluto (segundos) donde arranca este shot dentro de la pista
+    # maestra -- solo lo usan los shots de musica (lyrics/karaoke/videoclip
+    # animado), donde el shot NO tiene audio propio y su posicion en el
+    # video final depende de la letra/beat, no del orden secuencial. None
+    # para shots de historia (Capitulo), que se encadenan por duracion.
+    start_seg: float | None = None
     voice_id: str | None = None
     selected_image_asset_id: str | None = None
     selected_audio_asset_id: str | None = None

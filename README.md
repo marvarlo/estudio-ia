@@ -11,7 +11,7 @@ hexagonal. El plan completo, con las decisiones de arquitectura y la hoja de
 ruta por fases, vive en el doc **"Estudio IA — Arquitectura y plan de
 migración"**.
 
-## Estado: Fase 4 + huecos cerrados (prosa completa y corte de temporada)
+## Estado: Fase 5 (videoclip musical animado)
 
 Lo que ya funciona:
 
@@ -86,13 +86,25 @@ fondos → video de Karaoke) en este entorno.
   final -- usa `RenderPort.concat()` (ffmpeg, sin recodificar), que ya
   estaba implementado y testeado desde la fase 3 pero sin caso de uso que
   lo invocara.
+- **Fase 5 — Videoclip musical animado:** tercer tipo de producto de
+  música (junto a Lyrics video y Karaoke), con elenco propio generado por
+  LLM a partir de la letra transcrita (`GenerateMusicCastUseCase` --
+  versión de la generación de cast de la fase 1 sin canon, ya que un
+  proyecto de música no tiene uno) y fichas de referencia reutilizando
+  `GenerateCharacterSheetUseCase`/`GenerateLocationSheetUseCase` sin
+  cambios; shots en ventanas de ~8s **cortadas en el beat** (no en límites
+  de línea de letra) usando detección real de tempo/beats con **librosa**
+  (`LibrosaMusicAnalysisAdapter`); reutiliza `GenerateShotImageUseCase` sin
+  tocarla para fondos con personaje/escenario consistentes (mismo camino
+  que ya usan las historias); nueva composición **MusicVideo** en Remotion
+  (comparte código con LyricsVideo/Karaoke, solo oculta los subtítulos).
 
 Lo que falta (ver la hoja de ruta del doc de arquitectura): separación de
 fuentes verificada en vivo (Demucs/instrumental para Karaoke — hoy Karaoke
-usa la pista que se suba tal cual), detección de estructura musical (BPM/
-secciones), un editor de sincronización con forma de onda, y el videoclip
-musical animado con cast/escenarios (necesita generación narrativa por LLM
-como canon/cast, no solo transcripción).
+usa la pista que se suba tal cual), detección de secciones musicales
+(verso/coro) más allá del tempo/beat, un editor de sincronización con
+forma de onda, servidor MCP para la skill, exportación EPUB del
+manuscrito, y biblioteca de personajes reutilizable entre proyectos.
 
 ## Estructura
 
@@ -171,13 +183,23 @@ capítulo (o `POST /api/chapters/{id}/render:generate`) arma el
 lo renderiza con Remotion -- ver `render/README.md` para el detalle de cómo
 se invoca la CLI.
 
-### Crear un videoclip de letra / karaoke
+### Crear un videoclip de letra / karaoke / animado
 
-Desde "+ Nuevo videoclip de letra", subí un MP3/WAV y elegí el tipo
-(Lyrics video o Karaoke). El pipeline es: transcribir (Lemonade, real) →
-revisar/editar las líneas → generar shots desde la letra → generar un fondo
-por shot (Lemonade, reutiliza la misma generación de imagen de historias) →
-renderizar. No hace falta ninguna variable de entorno nueva -- usa el mismo
+Desde "+ Nuevo videoclip de letra", subí un MP3/WAV y elegí el tipo:
+
+- **Lyrics video / Karaoke**: transcribir (Lemonade, real) → revisar/editar
+  las líneas → generar shots desde la letra (una línea = un shot) → generar
+  un fondo por shot (Lemonade, reutiliza la misma generación de imagen de
+  historias) → renderizar.
+- **Videoclip animado**: igual, pero después de transcribir generás un
+  elenco propio ("Generar elenco", a partir de la letra) con fichas de
+  referencia opcionales, y los shots salen en ventanas de ~8s cortadas en
+  el beat ("Generar shots (ventanas de 8s...)") en vez de uno por línea --
+  las imágenes salen con personaje/escenario consistentes gracias al
+  elenco. Requiere `ffmpeg`/`ffprobe` (ya necesario para el resto del
+  proyecto) para la detección de beats via librosa.
+
+No hace falta ninguna variable de entorno nueva -- todo usa el mismo
 `LEMONADE_BASE_URL`.
 
 ### Importar una historia ya producida

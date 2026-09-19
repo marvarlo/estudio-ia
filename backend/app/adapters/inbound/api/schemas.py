@@ -591,4 +591,14 @@ class TranscribeRequest(BaseModel):
 
 
 class MusicRenderRequest(BaseModel):
-    composition_id: str  # "LyricsVideo" | "Karaoke"
+    composition_id: str  # "LyricsVideo" | "Karaoke" | "MusicVideo"
+
+
+class MusicCastGenerateRequest(BaseModel):
+    estilo_visual: str = "anime"
+    notas: str = ""
+    provider_id: str = "lemonade-text"
+
+
+class MusicShotsWindowRequest(BaseModel):
+    window_seconds: float = 8.0
