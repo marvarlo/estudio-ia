@@ -102,6 +102,11 @@ def test_import_creates_project_chapters_shots_and_cast(tmp_path: Path, reposito
     assert len(assets) == 1
     assert assets[0].shot_id == shots[1].id  # escena02 -> fila con orden 2
 
+    # El asset importado queda seleccionado por default (fase 2: si no, un
+    # shot recien importado se veria como "sin imagen" para el batch).
+    reloaded_shot = repository.get_shot(shots[1].id)
+    assert reloaded_shot.selected_image_asset_id == assets[0].id
+
     canon = repository.get_canon(summary.project_id)
     assert canon.logline == "Una prueba de importacion."
 

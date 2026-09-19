@@ -13,13 +13,15 @@ from app.adapters.outbound.repository.models import (
     CanonRow,
     ChapterRow,
     CharacterRow,
+    JobRow,
     LocationRow,
     ProjectRow,
     ShotRow,
     VoicePoolVoiceRow,
     VoiceRow,
 )
-from app.domain.shared.value_objects import AssetKind, ChapterStatus, ProjectKind, ShotType, Tone
+from app.domain.jobs.entities import Job
+from app.domain.shared.value_objects import AssetKind, ChapterStatus, JobStatus, ProjectKind, ShotType, Tone
 from app.domain.story.entities import (
     Asset,
     Canon,
@@ -152,6 +154,25 @@ def _row_to_voice_pool(row: VoicePoolVoiceRow) -> VoicePoolVoice:
         atributos=json.loads(row.atributos_json),
         veces_usada=row.veces_usada,
         ultima_historia=row.ultima_historia,
+    )
+
+
+def _row_to_job(row: JobRow) -> Job:
+    return Job(
+        id=row.id,
+        project_id=row.project_id,
+        shot_id=row.shot_id,
+        kind=row.kind,
+        provider=row.provider,
+        status=JobStatus(row.status),
+        progress=row.progress,
+        payload=json.loads(row.payload_json),
+        result=json.loads(row.result_json) if row.result_json else None,
+        error=row.error,
+        cost_estimate=row.cost_estimate,
+        cost_actual=row.cost_actual,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 
@@ -484,12 +505,24 @@ class SqlProjectRepository:
             )
             session.commit()
 
+    def get_asset(self, asset_id: str) -> Asset | None:
+        with Session(self._engine) as session:
+            row = session.get(AssetRow, asset_id)
+            return _row_to_asset(row) if row else None
+
     def list_assets(self, project_id: str, chapter_id: str | None = None) -> list[Asset]:
         with Session(self._engine) as session:
             query = select(AssetRow).where(AssetRow.project_id == project_id)
             if chapter_id is not None:
                 query = query.where(AssetRow.chapter_id == chapter_id)
             rows = session.exec(query).all()
+            return [_row_to_asset(row) for row in rows]
+
+    def list_assets_for_shot(self, shot_id: str) -> list[Asset]:
+        with Session(self._engine) as session:
+            rows = session.exec(
+                select(AssetRow).where(AssetRow.shot_id == shot_id).order_by(AssetRow.created_at.desc())
+            ).all()
             return [_row_to_asset(row) for row in rows]
 
     # -- Pool de voces (nivel canal) ------------------------------------
@@ -518,3 +551,38 @@ class SqlProjectRepository:
         with Session(self._engine) as session:
             row = session.get(VoicePoolVoiceRow, voice_id)
             return _row_to_voice_pool(row) if row else None
+
+    # -- Jobs -------------------------------------------------------------
+    def save_job(self, job: Job) -> None:
+        with Session(self._engine) as session:
+            session.merge(
+                JobRow(
+                    id=job.id,
+                    project_id=job.project_id,
+                    shot_id=job.shot_id,
+                    kind=job.kind,
+                    provider=job.provider,
+                    status=job.status.value,
+                    progress=job.progress,
+                    payload_json=json.dumps(job.payload, ensure_ascii=False),
+                    result_json=json.dumps(job.result, ensure_ascii=False) if job.result is not None else None,
+                    error=job.error,
+                    cost_estimate=job.cost_estimate,
+                    cost_actual=job.cost_actual,
+                    created_at=job.created_at,
+                    updated_at=job.updated_at,
+                )
+            )
+            session.commit()
+
+    def get_job(self, job_id: str) -> Job | None:
+        with Session(self._engine) as session:
+            row = session.get(JobRow, job_id)
+            return _row_to_job(row) if row else None
+
+    def list_jobs_by_shot(self, shot_id: str) -> list[Job]:
+        with Session(self._engine) as session:
+            rows = session.exec(
+                select(JobRow).where(JobRow.shot_id == shot_id).order_by(JobRow.created_at.desc())
+            ).all()
+            return [_row_to_job(row) for row in rows]
