@@ -146,6 +146,24 @@ class ImportStoryProjectUseCase:
                 if scanned.width and scanned.height:
                     formatos_encontrados.add(f"{scanned.width}x{scanned.height}")
 
+            # El primer asset encontrado de cada tipo por shot queda
+            # seleccionado por default -- sin esto, un shot recien importado
+            # se veria como "sin imagen/audio" para la logica de la fase 2
+            # (saltar en un lote si ya tiene un asset seleccionado) aunque
+            # el archivo ya exista en disco.
+            for asset in assets:
+                if not asset.shot_id:
+                    continue
+                shot = next((s for s in shots if s.id == asset.shot_id), None)
+                if shot is None:
+                    continue
+                if asset.kind == AssetKind.IMAGE and not shot.selected_image_asset_id:
+                    shot.selected_image_asset_id = asset.id
+                elif asset.kind == AssetKind.AUDIO and not shot.selected_audio_asset_id:
+                    shot.selected_audio_asset_id = asset.id
+                elif asset.kind == AssetKind.VIDEO and not shot.selected_video_asset_id:
+                    shot.selected_video_asset_id = asset.id
+
             estado = ChapterStatus.BORRADOR
             if shots:
                 estado = ChapterStatus.HOJA_DERIVADA

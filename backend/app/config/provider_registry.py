@@ -14,6 +14,9 @@ from app.adapters.outbound.llm.gemini_text import GeminiTextAdapter
 from app.adapters.outbound.llm.lemonade_text import LemonadeTextAdapter
 from app.adapters.outbound.tts.elevenlabs_tts import ElevenLabsTTSAdapter
 from app.adapters.outbound.tts.lemonade_tts import LemonadeTTSAdapter
+from app.adapters.outbound.video.omni_video import GeminiOmniVideoAdapter
+from app.adapters.outbound.video.veo_video import VeoVideoAdapter
+from app.adapters.outbound.video.wan_video import WanVideoAdapter
 from app.application.ports.provider_health import ProviderHealth
 from app.config.settings import Settings
 
@@ -65,6 +68,21 @@ class ProviderRegistry:
             "elevenlabs", "ElevenLabs", "cloud", ["tts", "voice_design"],
             configured=self._settings.elevenlabs_api_key is not None,
             adapter=ElevenLabsTTSAdapter(self._settings.elevenlabs_api_key),
+        )
+        self._add(
+            "wan-video", "WAN 2.7 (DashScope, lip-sync)", "cloud", ["video_lipsync"],
+            configured=self._settings.ali_api_key is not None,
+            adapter=WanVideoAdapter(self._settings.ali_api_key),
+        )
+        self._add(
+            "veo-video", "Google Veo 3.1", "cloud", ["video_i2v"],
+            configured=self._settings.google_api_key is not None,
+            adapter=VeoVideoAdapter(self._settings.google_api_key),
+        )
+        self._add(
+            "gemini-omni-video", "Gemini Omni (video, experimental)", "cloud", ["video_i2v"],
+            configured=self._settings.google_api_key is not None,
+            adapter=GeminiOmniVideoAdapter(self._settings.google_api_key),
         )
 
     def _add(self, id_: str, name: str, kind: str, capabilities: list[str], *, configured: bool, adapter: Any) -> None:

@@ -1,6 +1,6 @@
-"""Adaptador TTS contra ElevenLabs. Fase 0: solo configuracion + health_check
-(consulta /v1/user, que no genera audio ni consume creditos de sintesis).
-synthesize() con audio tags/eleven_v3 llega en la fase 2 junto a create_audio.py."""
+"""Adaptador TTS contra ElevenLabs. Payload de synthesize() identico al
+verificado en scripts/create_audio.py del skill historias-fantasia: POST
+{API_BASE}/text-to-speech/{voice_id} con {text, model_id}, Accept: audio/mpeg."""
 from __future__ import annotations
 
 import time
@@ -15,13 +15,26 @@ DEFAULT_MODEL = "eleven_multilingual_v2"
 
 
 class ElevenLabsTTSAdapter:
-    def __init__(self, api_key: str | None, model: str = DEFAULT_MODEL, timeout: float = 15.0) -> None:
+    def __init__(self, api_key: str | None, model: str = DEFAULT_MODEL, timeout: float = 60.0) -> None:
         self._api_key = api_key
         self._model = model
         self._timeout = timeout
 
     async def synthesize(self, request: TTSRequest) -> TTSResult:
-        raise NotImplementedError("ElevenLabsTTSAdapter.synthesize llega en la fase 2 (Storyboard)")
+        if not self._api_key:
+            raise RuntimeError("ELEVENLABS_API_KEY no configurada")
+        model_id = request.model or self._model
+        url = f"{API_BASE}/text-to-speech/{request.voice_id}"
+        payload = {"text": request.text, "model_id": model_id}
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            response = await client.post(
+                url,
+                json=payload,
+                headers={"xi-api-key": self._api_key, "Accept": "audio/mpeg"},
+            )
+            response.raise_for_status()
+            audio_bytes = response.content
+        return TTSResult(audio_bytes=audio_bytes, provider="elevenlabs", model=model_id)
 
     async def health_check(self) -> ProviderHealth:
         if not self._api_key:

@@ -128,6 +128,25 @@ class AssetRow(SQLModel, table=True):
     created_at: datetime | None = None
 
 
+class JobRow(SQLModel, table=True):
+    __tablename__ = "jobs"
+
+    id: str = Field(primary_key=True)
+    project_id: str | None = Field(default=None, index=True)
+    shot_id: str | None = Field(default=None, index=True)
+    kind: str
+    provider: str = ""
+    status: str = "pending"
+    progress: float = 0.0
+    payload_json: str = "{}"
+    result_json: str | None = None
+    error: str | None = None
+    cost_estimate: float | None = None
+    cost_actual: float | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class VoicePoolVoiceRow(SQLModel, table=True):
     __tablename__ = "voice_pool_voices"
 

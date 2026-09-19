@@ -1,6 +1,20 @@
 import { useCallback, useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
-import { api, emptyShotWrite, mediaUrl, shotToWrite, type ChapterShots, type LintWarning, type Shot, type ShotWrite } from "../api/client"
+import {
+  api,
+  emptyShotWrite,
+  mediaUrl,
+  pollJob,
+  shotToWrite,
+  type Asset,
+  type ChapterShots,
+  type LintWarning,
+  type Provider,
+  type Shot,
+  type ShotWrite,
+} from "../api/client"
+
+type GenerateKind = "image" | "audio" | "video"
 
 export function ChapterPage() {
   const { chapterId } = useParams<{ chapterId: string }>()
@@ -10,6 +24,12 @@ export function ChapterPage() {
   const [error, setError] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [exportMessage, setExportMessage] = useState<string | null>(null)
+  const [providers, setProviders] = useState<Provider[]>([])
+  const [busy, setBusy] = useState<Record<string, GenerateKind | null>>({})
+  const [historyFor, setHistoryFor] = useState<string | null>(null)
+  const [history, setHistory] = useState<Asset[]>([])
+  const [batchBusy, setBatchBusy] = useState<"image" | "audio" | null>(null)
+  const [batchMessage, setBatchMessage] = useState<string | null>(null)
 
   const load = useCallback(() => {
     if (!chapterId) return
@@ -24,6 +44,15 @@ export function ChapterPage() {
   }, [chapterId])
 
   useEffect(load, [load])
+  useEffect(() => {
+    api.listProviders().then(setProviders).catch(() => {})
+  }, [])
+
+  const imageProviders = providers.filter((p) => p.capabilities.includes("image") && p.configured)
+  const audioProviders = providers.filter((p) => p.capabilities.includes("tts") && p.configured)
+  const videoProviders = providers.filter(
+    (p) => (p.capabilities.includes("video_i2v") || p.capabilities.includes("video_lipsync")) && p.configured,
+  )
 
   function updateField(shotId: string, field: keyof ShotWrite, value: ShotWrite[keyof ShotWrite]) {
     setEdits((prev) => ({ ...prev, [shotId]: { ...prev[shotId], [field]: value } }))
@@ -87,6 +116,67 @@ export function ChapterPage() {
     }
   }
 
+  async function handleGenerate(shotId: string, kind: GenerateKind, providerId: string) {
+    if (!providerId) return
+    setBusy((prev) => ({ ...prev, [shotId]: kind }))
+    setError(null)
+    try {
+      const job =
+        kind === "image"
+          ? await api.generateShotImage(shotId, providerId)
+          : kind === "audio"
+            ? await api.generateShotAudio(shotId, providerId)
+            : await api.generateShotVideo(shotId, providerId)
+      const finished = await pollJob(job.id)
+      if (finished.status === "failed") throw new Error(finished.error ?? "El job fallo sin detalle")
+      load()
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    } finally {
+      setBusy((prev) => ({ ...prev, [shotId]: null }))
+    }
+  }
+
+  async function handleBatch(kind: "image" | "audio", providerId: string) {
+    if (!chapterId || !providerId) return
+    setBatchBusy(kind)
+    setBatchMessage(null)
+    setError(null)
+    try {
+      const result = kind === "image" ? await api.generateChapterImages(chapterId, providerId) : await api.generateChapterAudio(chapterId, providerId)
+      setBatchMessage(`Encolados ${result.jobs.length} shots (${result.skipped} ya tenian ${kind === "image" ? "imagen" : "audio"} y se saltaron). Esperando...`)
+      await Promise.all(result.jobs.map((job) => pollJob(job.id).catch(() => null)))
+      setBatchMessage(`Lote de ${kind === "image" ? "imagenes" : "audio"} terminado: ${result.jobs.length} generados, ${result.skipped} saltados.`)
+      load()
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    } finally {
+      setBatchBusy(null)
+    }
+  }
+
+  async function toggleHistory(shotId: string) {
+    if (historyFor === shotId) {
+      setHistoryFor(null)
+      return
+    }
+    setHistoryFor(shotId)
+    try {
+      setHistory(await api.listShotAssets(shotId))
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    }
+  }
+
+  async function handleSelectAsset(shotId: string, assetId: string) {
+    try {
+      await api.selectShotAsset(shotId, assetId)
+      load()
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    }
+  }
+
   if (error && !data) return <p className="text-sm text-red-400">{error}</p>
   if (!data) return <p className="text-sm text-zinc-500">Cargando...</p>
 
@@ -113,9 +203,7 @@ export function ChapterPage() {
 
       {error && <p className="rounded-lg border border-red-900 bg-red-950 px-3 py-2 text-sm text-red-300">{error}</p>}
       {exportMessage && (
-        <p className="rounded-lg border border-emerald-900 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-200">
-          {exportMessage}
-        </p>
+        <p className="rounded-lg border border-emerald-900 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-200">{exportMessage}</p>
       )}
       {chapterWarnings.length > 0 && (
         <div className="rounded-lg border border-amber-900 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
@@ -125,17 +213,29 @@ export function ChapterPage() {
         </div>
       )}
 
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3 text-xs">
+        <span className="text-zinc-400">Generar por lote:</span>
+        <BatchButton label="Imagenes" providers={imageProviders} busy={batchBusy === "image"} onRun={(pid) => handleBatch("image", pid)} />
+        <BatchButton label="Audio" providers={audioProviders} busy={batchBusy === "audio"} onRun={(pid) => handleBatch("audio", pid)} />
+        {batchMessage && <span className="text-zinc-400">{batchMessage}</span>}
+      </div>
+
       <div className="space-y-3">
         {shots.map((shot, index) => {
           const edit = edits[shot.id] ?? shotToWrite(shot)
           const imageUrl = mediaUrl(shot.image_asset_path)
           const audioUrl = mediaUrl(shot.audio_asset_path)
+          const videoUrl = mediaUrl(shot.video_asset_path)
           const shotWarnings = warningsByShot.get(shot.id) ?? []
+          const shotBusy = busy[shot.id];
+
           return (
             <div key={shot.id} className="flex gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-              <div className="flex w-40 shrink-0 flex-col gap-2">
+              <div className="flex w-44 shrink-0 flex-col gap-2">
                 <div className="flex h-24 w-full items-center justify-center overflow-hidden rounded-lg bg-zinc-800">
-                  {imageUrl ? (
+                  {videoUrl ? (
+                    <video src={videoUrl} controls className="h-full w-full object-cover" />
+                  ) : imageUrl ? (
                     <img src={imageUrl} alt={`Shot ${shot.orden}`} className="h-full w-full object-cover" />
                   ) : (
                     <span className="text-xs text-zinc-600">sin imagen</span>
@@ -158,6 +258,9 @@ export function ChapterPage() {
                     <track kind="captions" />
                   </audio>
                 )}
+                <button onClick={() => toggleHistory(shot.id)} className="text-xs text-zinc-500 underline hover:text-zinc-300">
+                  {historyFor === shot.id ? "Ocultar historial" : "Ver historial"}
+                </button>
               </div>
 
               <div className="min-w-0 flex-1 space-y-2">
@@ -230,7 +333,7 @@ export function ChapterPage() {
                   </div>
                 )}
 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => handleSave(shot.id)}
                     disabled={savingId === shot.id}
@@ -244,7 +347,56 @@ export function ChapterPage() {
                   >
                     Eliminar
                   </button>
+                  <span className="mx-1 h-4 w-px bg-zinc-700" />
+                  <GenerateControl
+                    label="Imagen"
+                    providers={imageProviders}
+                    busy={shotBusy === "image"}
+                    onRun={(pid) => handleGenerate(shot.id, "image", pid)}
+                  />
+                  <GenerateControl
+                    label="Audio"
+                    providers={audioProviders}
+                    busy={shotBusy === "audio"}
+                    onRun={(pid) => handleGenerate(shot.id, "audio", pid)}
+                  />
+                  <GenerateControl
+                    label="Video"
+                    providers={videoProviders}
+                    busy={shotBusy === "video"}
+                    onRun={(pid) => handleGenerate(shot.id, "video", pid)}
+                    disabled={!shot.image_asset_path}
+                    disabledTitle="Genera la imagen primero"
+                  />
                 </div>
+
+                {historyFor === shot.id && (
+                  <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-950 p-2">
+                    <p className="mb-1 text-xs text-zinc-500">Historial de versiones ({history.length}):</p>
+                    <div className="flex flex-wrap gap-2">
+                      {history.map((asset) => {
+                        const isSelected = [shot.image_asset_path, shot.audio_asset_path, shot.video_asset_path].includes(asset.path)
+                        const thumbUrl = mediaUrl(asset.path)
+                        return (
+                          <button
+                            key={asset.id}
+                            onClick={() => handleSelectAsset(shot.id, asset.id)}
+                            className={`rounded border px-1.5 py-1 text-left text-xs ${isSelected ? "border-violet-500 bg-violet-950/40" : "border-zinc-700 hover:bg-zinc-800"}`}
+                            title={asset.path}
+                          >
+                            {asset.kind === "image" && thumbUrl ? (
+                              <img src={thumbUrl} alt="" className="mb-1 h-14 w-20 rounded object-cover" />
+                            ) : (
+                              <span className="mb-1 block h-14 w-20 rounded bg-zinc-800 text-center leading-[3.5rem]">{asset.kind}</span>
+                            )}
+                            <span className="block text-[10px] text-zinc-500">{asset.provider || "importado"}</span>
+                          </button>
+                        )
+                      })}
+                      {history.length === 0 && <p className="text-xs text-zinc-600">Sin generaciones todavia.</p>}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )
@@ -255,5 +407,90 @@ export function ChapterPage() {
         + Agregar shot
       </button>
     </div>
+  )
+}
+
+function GenerateControl({
+  label,
+  providers,
+  busy,
+  onRun,
+  disabled,
+  disabledTitle,
+}: {
+  label: string
+  providers: Provider[]
+  busy: boolean
+  onRun: (providerId: string) => void
+  disabled?: boolean
+  disabledTitle?: string
+}) {
+  const [providerId, setProviderId] = useState("")
+  useEffect(() => {
+    if (!providerId && providers.length > 0) setProviderId(providers[0].id)
+  }, [providers, providerId])
+
+  if (providers.length === 0) return null
+
+  return (
+    <span className="flex items-center gap-1" title={disabled ? disabledTitle : undefined}>
+      <select
+        value={providerId}
+        onChange={(e) => setProviderId(e.target.value)}
+        disabled={disabled}
+        className="rounded border border-zinc-700 bg-zinc-950 px-1 py-1 text-xs disabled:opacity-40"
+      >
+        {providers.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+      <button
+        onClick={() => onRun(providerId)}
+        disabled={busy || disabled || !providerId}
+        className="rounded border border-zinc-700 px-2 py-1 text-xs hover:bg-zinc-800 disabled:opacity-40"
+      >
+        {busy ? `${label}...` : label}
+      </button>
+    </span>
+  )
+}
+
+function BatchButton({
+  label,
+  providers,
+  busy,
+  onRun,
+}: {
+  label: string
+  providers: Provider[]
+  busy: boolean
+  onRun: (providerId: string) => void
+}) {
+  const [providerId, setProviderId] = useState("")
+  useEffect(() => {
+    if (!providerId && providers.length > 0) setProviderId(providers[0].id)
+  }, [providers, providerId])
+
+  if (providers.length === 0) return null
+
+  return (
+    <span className="flex items-center gap-1">
+      <select value={providerId} onChange={(e) => setProviderId(e.target.value)} className="rounded border border-zinc-700 bg-zinc-950 px-1 py-1">
+        {providers.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+      <button
+        onClick={() => onRun(providerId)}
+        disabled={busy || !providerId}
+        className="rounded bg-violet-600 px-2 py-1 font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+      >
+        {busy ? `Generando ${label}...` : `Generar ${label}`}
+      </button>
+    </span>
   )
 }

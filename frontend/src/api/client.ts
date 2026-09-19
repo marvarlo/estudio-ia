@@ -164,6 +164,26 @@ export type Asset = {
   model: string
 }
 
+export type JobStatus = "pending" | "running" | "done" | "failed" | "cancelled"
+
+export type Job = {
+  id: string
+  kind: string
+  provider: string
+  shot_id: string | null
+  status: JobStatus
+  progress: number
+  result: Record<string, string> | null
+  error: string | null
+  cost_estimate: number | null
+  cost_actual: number | null
+}
+
+export type BatchGenerateResult = {
+  jobs: Job[]
+  skipped: number
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -244,9 +264,51 @@ export const api = {
   lintChapter: (chapterId: string) => request<LintWarning[]>(`/api/chapters/${chapterId}/lint`),
   exportChapter: (chapterId: string) => request<{ path: string }>(`/api/chapters/${chapterId}/export`, { method: "POST" }),
 
+  // Generacion por shot (fase 2): imagen / audio / video, jobs, versionado
+  generateShotImage: (shotId: string, providerId: string, select = true) =>
+    request<Job>(`/api/shots/${shotId}/image:generate`, {
+      method: "POST",
+      body: JSON.stringify({ provider_id: providerId, select }),
+    }),
+  generateShotAudio: (shotId: string, providerId: string, select = true) =>
+    request<Job>(`/api/shots/${shotId}/audio:generate`, {
+      method: "POST",
+      body: JSON.stringify({ provider_id: providerId, select }),
+    }),
+  generateShotVideo: (shotId: string, providerId: string, select = true) =>
+    request<Job>(`/api/shots/${shotId}/video:generate`, {
+      method: "POST",
+      body: JSON.stringify({ provider_id: providerId, select }),
+    }),
+  generateChapterImages: (chapterId: string, providerId: string, force = false) =>
+    request<BatchGenerateResult>(`/api/chapters/${chapterId}/images:generate`, {
+      method: "POST",
+      body: JSON.stringify({ provider_id: providerId, force }),
+    }),
+  generateChapterAudio: (chapterId: string, providerId: string, force = false) =>
+    request<BatchGenerateResult>(`/api/chapters/${chapterId}/audio:generate`, {
+      method: "POST",
+      body: JSON.stringify({ provider_id: providerId, force }),
+    }),
+  getJob: (jobId: string) => request<Job>(`/api/jobs/${jobId}`),
+  listShotAssets: (shotId: string) => request<Asset[]>(`/api/shots/${shotId}/assets`),
+  selectShotAsset: (shotId: string, assetId: string) =>
+    request<Shot>(`/api/shots/${shotId}/assets:select`, { method: "POST", body: JSON.stringify({ asset_id: assetId }) }),
+
   // Proveedores
   listProviders: () => request<Provider[]>("/api/providers"),
   testProvider: (providerId: string) => request<ProviderHealth>(`/api/providers/${providerId}/test`, { method: "POST" }),
+}
+
+/** Poll a un job hasta que llegue a un estado terminal (done/failed/cancelled). */
+export async function pollJob(jobId: string, { intervalMs = 1500, timeoutMs = 10 * 60 * 1000 } = {}): Promise<Job> {
+  const deadline = Date.now() + timeoutMs
+  while (true) {
+    const job = await api.getJob(jobId)
+    if (job.status === "done" || job.status === "failed" || job.status === "cancelled") return job
+    if (Date.now() > deadline) throw new Error(`Job ${jobId} no termino a tiempo`)
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
 }
 
 // Los assets viven fuera de este proyecto (en la carpeta de la historia) --
