@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.adapters.inbound.api.routers import chapters, media, projects, providers
+from app.adapters.inbound.api.routers import chapters, media, projects, providers, sheets, shots, voice_pool
 from app.adapters.outbound.repository.db import create_db_and_tables, make_engine
 from app.adapters.outbound.repository.project_repository import SqlProjectRepository
 from app.config.provider_registry import ProviderRegistry
@@ -45,6 +45,9 @@ app.add_middleware(
 
 app.include_router(projects.router)
 app.include_router(chapters.router)
+app.include_router(shots.router)
+app.include_router(voice_pool.router)
+app.include_router(sheets.router)
 app.include_router(providers.router)
 app.include_router(media.router)
 

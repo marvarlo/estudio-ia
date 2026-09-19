@@ -1,7 +1,6 @@
-"""Adaptador de texto contra Gemini. Fase 0: solo configuracion + health_check
-(valida que la API key este presente y que el modelo responda a una llamada
-minima). generate() completo, incluyendo tool-use y JSON estructurado, llega
-en la fase 1 junto con los casos de uso de escritura (GenerateCanon, etc.)."""
+"""Adaptador de texto contra Gemini (usado por GenerateCanon/GenerateCast en
+la fase 1 cuando el usuario elige Gemini como proveedor de escritura en vez
+de Lemonade local)."""
 from __future__ import annotations
 
 import time
@@ -19,7 +18,7 @@ API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{mod
 
 
 class GeminiTextAdapter:
-    def __init__(self, api_key: str | None, model: str = DEFAULT_MODEL, timeout: float = 30.0) -> None:
+    def __init__(self, api_key: str | None, model: str = DEFAULT_MODEL, timeout: float = 120.0) -> None:
         self._api_key = api_key
         self._model = model
         self._timeout = timeout
@@ -28,7 +27,18 @@ class GeminiTextAdapter:
         if not self._api_key:
             raise RuntimeError("GEMINI_API_KEY no configurada")
         url = API_URL_TEMPLATE.format(model=self._model)
-        payload = {"contents": [{"parts": [{"text": request.prompt}]}]}
+        parts = []
+        if request.system:
+            # Gemini no tiene un rol "system" separado en este endpoint
+            # simple -- se antepone como contexto, igual que hace
+            # audit_production.py del skill original.
+            parts.append({"text": f"{request.system}\n\n{request.prompt}"})
+        else:
+            parts.append({"text": request.prompt})
+        generation_config: dict = {"maxOutputTokens": request.max_tokens, "temperature": request.temperature}
+        if request.json_mode:
+            generation_config["responseMimeType"] = "application/json"
+        payload = {"contents": [{"parts": parts}], "generationConfig": generation_config}
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(url, params={"key": self._api_key}, json=payload)
             response.raise_for_status()

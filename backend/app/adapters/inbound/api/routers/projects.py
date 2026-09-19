@@ -4,10 +4,25 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.adapters.inbound.api.deps import get_repository
-from app.adapters.inbound.api.schemas import ImportRequest, ImportSummaryOut, ProjectDetailOut, ProjectOut
+from app.adapters.inbound.api.deps import get_provider_registry, get_repository, get_settings, resolve_adapter
+from app.adapters.inbound.api.schemas import (
+    CanonGenerateRequest,
+    CanonOut,
+    CastGenerateRequest,
+    CastGenerationOut,
+    ImportRequest,
+    ImportSummaryOut,
+    ProjectCreateRequest,
+    ProjectDetailOut,
+    ProjectOut,
+    VoiceOut,
+)
 from app.application.use_cases.import_story_project import ImportStoryProjectUseCase
 from app.application.use_cases.project_queries import GetProjectDetailUseCase, ListProjectsUseCase
+from app.application.use_cases.story_generation import CreateStoryProjectUseCase, GenerateCanonUseCase, GenerateCastUseCase
+from app.application.use_cases.voice_pool import AssignVoicesUseCase
+from app.prompts.canon import StoryBrief
+from app.prompts.cast import CastBrief
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -16,6 +31,18 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 def list_projects(repository=Depends(get_repository)) -> list[ProjectOut]:
     projects = ListProjectsUseCase(repository).execute()
     return [ProjectOut.from_domain(p) for p in projects]
+
+
+@router.post("", response_model=ProjectOut)
+def create_project(
+    payload: ProjectCreateRequest, repository=Depends(get_repository), settings=Depends(get_settings)
+) -> ProjectOut:
+    """Crea un proyecto NUEVO desde cero (paso 1 del wizard) -- distinto de
+    /import, que trae uno ya producido con el skill original."""
+    project = CreateStoryProjectUseCase(repository, settings.stories_root).execute(
+        name=payload.name, estilo_visual=payload.estilo_visual, tono=payload.tono, plataformas=payload.plataformas
+    )
+    return ProjectOut.from_domain(project)
 
 
 @router.post("/import", response_model=ImportSummaryOut)
@@ -36,3 +63,60 @@ def get_project(project_id: str, repository=Depends(get_repository)) -> ProjectD
     if detail is None:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
     return ProjectDetailOut.from_domain(detail)
+
+
+@router.get("/{project_id}/canon", response_model=CanonOut)
+def get_canon(project_id: str, repository=Depends(get_repository)) -> CanonOut:
+    canon = repository.get_canon(project_id)
+    if canon is None:
+        raise HTTPException(status_code=404, detail="Este proyecto todavia no tiene un canon generado")
+    return CanonOut.from_domain(canon)
+
+
+@router.post("/{project_id}/canon:generate", response_model=CanonOut)
+async def generate_canon(
+    project_id: str,
+    payload: CanonGenerateRequest,
+    repository=Depends(get_repository),
+    registry=Depends(get_provider_registry),
+) -> CanonOut:
+    text_port = resolve_adapter(registry, payload.provider_id)
+    brief = StoryBrief(
+        estilo_narrativo=payload.estilo_narrativo,
+        tono=payload.tono,
+        plataformas=payload.plataformas,
+        estilo_visual=payload.estilo_visual,
+        num_episodios=payload.num_episodios,
+        duracion_objetivo_min=payload.duracion_objetivo_min,
+        semilla=payload.semilla,
+    )
+    try:
+        canon = await GenerateCanonUseCase(repository, text_port).execute(project_id, brief)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CanonOut.from_domain(canon)
+
+
+@router.post("/{project_id}/cast:generate", response_model=CastGenerationOut)
+async def generate_cast(
+    project_id: str,
+    payload: CastGenerateRequest,
+    repository=Depends(get_repository),
+    registry=Depends(get_provider_registry),
+) -> CastGenerationOut:
+    text_port = resolve_adapter(registry, payload.provider_id)
+    brief = CastBrief(num_personajes=payload.num_personajes, num_escenarios=payload.num_escenarios, notas=payload.notas)
+    try:
+        result = await GenerateCastUseCase(repository, text_port).execute(project_id, brief)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CastGenerationOut.from_domain(result)
+
+
+@router.post("/{project_id}/voices:assign", response_model=list[VoiceOut])
+def assign_voices(project_id: str, repository=Depends(get_repository)) -> list[VoiceOut]:
+    try:
+        voices = AssignVoicesUseCase(repository).execute(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return [VoiceOut.from_domain(v) for v in voices]

@@ -22,6 +22,8 @@ class ProjectRow(SQLModel, table=True):
     tono: str = "NORMAL"
     plataformas_json: str = "[]"
     formatos_json: str = "[]"
+    num_episodios: int | None = None
+    duracion_objetivo_min: int | None = None
     created_at: datetime | None = None
 
 
@@ -30,8 +32,10 @@ class CanonRow(SQLModel, table=True):
 
     project_id: str = Field(primary_key=True, foreign_key="projects.id")
     logline: str = ""
+    premisa: str = ""
     reglas_sistema: str = ""
     glosario: str = ""
+    temporada_json: str = "[]"
     raw_markdown: str = ""
 
 
@@ -76,6 +80,7 @@ class CharacterRow(SQLModel, table=True):
 
     id: str = Field(primary_key=True)
     project_id: str = Field(index=True, foreign_key="projects.id")
+    slug: str = Field(default="", index=True)
     nombre: str
     rol: str = ""
     prompt_anchor: str = ""
@@ -89,6 +94,7 @@ class LocationRow(SQLModel, table=True):
 
     id: str = Field(primary_key=True)
     project_id: str = Field(index=True, foreign_key="projects.id")
+    slug: str = Field(default="", index=True)
     nombre: str
     descripcion_fija: str = ""
     reference_image_path: str | None = None
@@ -120,3 +126,16 @@ class AssetRow(SQLModel, table=True):
     provider: str = ""
     model: str = ""
     created_at: datetime | None = None
+
+
+class VoicePoolVoiceRow(SQLModel, table=True):
+    __tablename__ = "voice_pool_voices"
+
+    id: str = Field(primary_key=True)
+    proveedor: str = ""
+    voice_id_externo: str = ""
+    nombre_interno: str = ""
+    modelo_tts: str = ""
+    atributos_json: str = "{}"
+    veces_usada: int = 0
+    ultima_historia: str | None = None

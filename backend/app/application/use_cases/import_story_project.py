@@ -207,6 +207,7 @@ class ImportStoryProjectUseCase:
             character = Character(
                 id=_deterministic_id("character", project_id, personaje_id),
                 project_id=project_id,
+                slug=personaje_id,
                 nombre=raw.get("nombre", personaje_id),
                 rol=raw.get("rol", ""),
                 prompt_anchor=tokens.get("prompt_anchor", ""),
@@ -232,6 +233,7 @@ class ImportStoryProjectUseCase:
             location = Location(
                 id=_deterministic_id("location", project_id, escenario_id),
                 project_id=project_id,
+                slug=escenario_id,
                 nombre=raw.get("nombre", escenario_id),
                 descripcion_fija=raw.get("descripcion_fija", ""),
                 reference_image_path=(root_path / ref_path_str) if ref_path_str else None,

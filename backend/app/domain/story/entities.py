@@ -24,15 +24,29 @@ class Project:
     tono: Tone = Tone.NORMAL
     plataformas: list[str] = field(default_factory=list)
     formatos: list[str] = field(default_factory=list)  # ej. ["1280x720", "940x1672"]
+    num_episodios: int | None = None
+    duracion_objetivo_min: int | None = None
     created_at: datetime | None = None
+
+
+@dataclass
+class SeasonEpisode:
+    """Una fila del esqueleto de temporada (seccion 6 de canon.md): una
+    linea + cliffhanger por capitulo, decidido antes de escribir prosa."""
+
+    numero: int
+    resumen: str
+    cliffhanger: str
 
 
 @dataclass
 class Canon:
     project_id: str
     logline: str = ""
+    premisa: str = ""
     reglas_sistema: str = ""
     glosario: str = ""
+    temporada: list[SeasonEpisode] = field(default_factory=list)
     raw_markdown: str = ""
 
 
@@ -75,8 +89,16 @@ class Shot:
 
 @dataclass
 class Character:
+    """`slug` es el id LEGIBLE (`protagonista_01`) que usan produccion.md
+    (`Shot.personaje_ids`), los `[id]` entre corchetes de `Prompt Imagen`, y
+    personajes.json -- distinto de `id`, la clave primaria interna de la
+    base de datos. Los dos existen porque el primero es estable entre
+    reimportaciones/regeneraciones y legible por humanos; el segundo es solo
+    un detalle de persistencia."""
+
     id: str
     project_id: str
+    slug: str
     nombre: str
     rol: str = ""
     prompt_anchor: str = ""
@@ -89,6 +111,7 @@ class Character:
 class Location:
     id: str
     project_id: str
+    slug: str
     nombre: str
     descripcion_fija: str = ""
     reference_image_path: Path | None = None
@@ -122,3 +145,19 @@ class Asset:
     provider: str = ""
     model: str = ""
     created_at: datetime | None = None
+
+
+@dataclass
+class VoicePoolVoice:
+    """Pool de voces a nivel CANAL (no por proyecto) -- voces_pool.json del
+    skill original. Persiste entre historias para no repetir el mismo timbre
+    de protagonista; ver Paso 8 de SKILL.md."""
+
+    id: str
+    proveedor: str
+    voice_id_externo: str
+    nombre_interno: str = ""
+    modelo_tts: str = ""
+    atributos: dict = field(default_factory=dict)  # timbre, edad_percibida, energia, genero_percibido
+    veces_usada: int = 0
+    ultima_historia: str | None = None

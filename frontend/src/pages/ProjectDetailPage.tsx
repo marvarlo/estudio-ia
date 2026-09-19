@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams } from "react-router-dom"
 import { api, mediaUrl, type ProjectDetail } from "../api/client"
 
 const estadoLabel: Record<string, string> = {
@@ -18,18 +18,58 @@ const estadoColor: Record<string, string> = {
 
 export function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>()
+  const navigate = useNavigate()
   const [detail, setDetail] = useState<ProjectDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [sheetLoading, setSheetLoading] = useState<string | null>(null)
 
-  useEffect(() => {
+  function reload() {
     if (!projectId) return
     api
       .getProject(projectId)
       .then(setDetail)
       .catch((err) => setError(String(err.message ?? err)))
-  }, [projectId])
+  }
 
-  if (error) return <p className="text-sm text-red-400">{error}</p>
+  useEffect(reload, [projectId])
+
+  async function handleNewChapter() {
+    if (!projectId) return
+    const titulo = window.prompt("Titulo del nuevo capitulo:", "Capítulo nuevo")
+    if (!titulo) return
+    try {
+      const chapter = await api.createChapter(projectId, titulo)
+      navigate(`/chapters/${chapter.id}`)
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    }
+  }
+
+  async function handleCharacterSheet(characterId: string) {
+    setSheetLoading(characterId)
+    try {
+      await api.generateCharacterSheet(characterId)
+      reload()
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    } finally {
+      setSheetLoading(null)
+    }
+  }
+
+  async function handleLocationSheet(locationId: string) {
+    setSheetLoading(locationId)
+    try {
+      await api.generateLocationSheet(locationId)
+      reload()
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+    } finally {
+      setSheetLoading(null)
+    }
+  }
+
+  if (error && !detail) return <p className="text-sm text-red-400">{error}</p>
   if (!detail) return <p className="text-sm text-zinc-500">Cargando...</p>
 
   const { project, logline, chapters, characters, locations, voices } = detail
@@ -48,8 +88,15 @@ export function ProjectDetailPage() {
         </p>
       </div>
 
+      {error && <p className="rounded-lg border border-red-900 bg-red-950 px-3 py-2 text-sm text-red-300">{error}</p>}
+
       <section>
-        <h2 className="mb-3 text-lg font-medium">Capitulos</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-medium">Capitulos</h2>
+          <button onClick={handleNewChapter} className="rounded-lg border border-zinc-700 px-3 py-1 text-xs hover:bg-zinc-800">
+            + Nuevo capitulo
+          </button>
+        </div>
         <ul className="divide-y divide-zinc-800 rounded-xl border border-zinc-800 bg-zinc-900">
           {chapters.map((chapter) => (
             <li key={chapter.id}>
@@ -85,7 +132,14 @@ export function ProjectDetailPage() {
                   )}
                 </div>
                 <p className="text-sm font-medium text-zinc-100">{character.nombre}</p>
-                <p className="text-xs text-zinc-500">{character.rol}</p>
+                <p className="mb-2 text-xs text-zinc-500">{character.rol}</p>
+                <button
+                  onClick={() => handleCharacterSheet(character.id)}
+                  disabled={sheetLoading === character.id}
+                  className="w-full rounded border border-zinc-700 px-2 py-1 text-xs hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  {sheetLoading === character.id ? "Generando..." : imageUrl ? "Regenerar" : "Generar ficha"}
+                </button>
               </div>
             )
           })}
@@ -106,7 +160,14 @@ export function ProjectDetailPage() {
                     <span className="text-xs text-zinc-600">sin ficha</span>
                   )}
                 </div>
-                <p className="text-sm font-medium text-zinc-100">{location.nombre}</p>
+                <p className="mb-2 text-sm font-medium text-zinc-100">{location.nombre}</p>
+                <button
+                  onClick={() => handleLocationSheet(location.id)}
+                  disabled={sheetLoading === location.id}
+                  className="w-full rounded border border-zinc-700 px-2 py-1 text-xs hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  {sheetLoading === location.id ? "Generando..." : imageUrl ? "Regenerar" : "Generar ficha"}
+                </button>
               </div>
             )
           })}

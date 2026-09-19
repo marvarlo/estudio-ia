@@ -20,7 +20,11 @@ DEFAULT_MODEL = "gemma4-it-e4b-FLM"
 
 
 class LemonadeTextAdapter:
-    def __init__(self, base_url: str, model: str = DEFAULT_MODEL, timeout: float = 60.0) -> None:
+    # 180s default: la generacion de canon/cast pide varios miles de tokens
+    # JSON estructurados, y un modelo local (NPU/CPU) puede tardar bastante
+    # mas que una llamada de chat corta -- el health_check usa su propio
+    # cliente de 5s, no este timeout.
+    def __init__(self, base_url: str, model: str = DEFAULT_MODEL, timeout: float = 180.0) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._timeout = timeout
@@ -36,6 +40,12 @@ class LemonadeTextAdapter:
             "max_tokens": request.max_tokens,
             "temperature": request.temperature,
         }
+        if request.json_mode:
+            # Best-effort: no todos los backends OpenAI-compatible locales
+            # honran response_format, pero pasarlo no rompe los que no lo
+            # soportan -- la robustez real ante JSON mal formado vive en el
+            # parser del caso de uso (extract_json_object), no aca.
+            payload["response_format"] = {"type": "json_object"}
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(f"{self._base_url}/chat/completions", json=payload)
             response.raise_for_status()
