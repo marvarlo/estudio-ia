@@ -45,7 +45,12 @@ class InProcessJobQueue:
                 raise
             except Exception as exc:  # noqa: BLE001 - un job fallido se reporta, no tumba el proceso
                 job.status = JobStatus.FAILED
-                job.error = str(exc)
+                # str(exc) puede venir vacio (ej. httpx.ReadTimeout no lleva
+                # mensaje) -- verificado en vivo con una derivacion de hoja
+                # de produccion que superó el timeout del LLM local y dejo
+                # error="" en vez de algo util. Cae al nombre de la clase
+                # para que el job siempre tenga un motivo legible.
+                job.error = str(exc) or type(exc).__name__
             finally:
                 job.updated_at = datetime.now(timezone.utc)
                 self._repository.save_job(job)

@@ -27,6 +27,14 @@ from pathlib import Path
 from app.application.ports.media_probe import MediaProbePort
 from app.application.ports.render import RenderRequest, RenderResult
 
+# Separador/Cierre (corte de temporada completa) son tarjetas sueltas del
+# prototipo original, con props planos propios ({numeroCapitulo,
+# tituloCapitulo} o {} vacio) -- no forman parte del contrato timeline.json
+# de Capitulo/LyricsVideo/Karaoke, asi que sus props van SIN el wrapper
+# {"timeline": ...} (ver Root.tsx: sus defaultProps son planos, no
+# {timeline: ...}).
+_UNWRAPPED_COMPOSITIONS = {"Separador", "Cierre"}
+
 
 class RemotionRenderAdapter:
     def __init__(self, render_project_dir: Path, media_probe: MediaProbePort) -> None:
@@ -48,10 +56,11 @@ class RemotionRenderAdapter:
         node, cli = self._node_and_cli()
         request.output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        props = request.timeline if request.composition_id in _UNWRAPPED_COMPOSITIONS else {"timeline": request.timeline}
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".json", delete=False, dir=request.output_path.parent, encoding="utf-8"
         ) as props_file:
-            json.dump({"timeline": request.timeline}, props_file, ensure_ascii=False)
+            json.dump(props, props_file, ensure_ascii=False)
             props_path = Path(props_file.name)
 
         try:

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
-import { api, mediaUrl, type ProjectDetail } from "../api/client"
+import { api, mediaUrl, pollJob, type ProjectDetail } from "../api/client"
 
 const estadoLabel: Record<string, string> = {
   borrador: "Borrador",
@@ -22,6 +22,8 @@ export function ProjectDetailPage() {
   const [detail, setDetail] = useState<ProjectDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sheetLoading, setSheetLoading] = useState<string | null>(null)
+  const [seasonBusy, setSeasonBusy] = useState(false)
+  const [seasonMessage, setSeasonMessage] = useState<string | null>(null)
 
   function reload() {
     if (!projectId) return
@@ -32,6 +34,26 @@ export function ProjectDetailPage() {
   }
 
   useEffect(reload, [projectId])
+
+  async function handleRenderSeason() {
+    if (!projectId) return
+    setSeasonBusy(true)
+    setSeasonMessage(null)
+    setError(null)
+    try {
+      const job = await api.renderSeason(projectId)
+      setSeasonMessage("Renderizando corte de temporada (puede tardar varios minutos)...")
+      const finished = await pollJob(job.id)
+      if (finished.status === "failed") throw new Error(finished.error ?? "El render de temporada fallo")
+      setSeasonMessage("Corte de temporada listo.")
+      reload()
+    } catch (err) {
+      setError(String((err as Error).message ?? err))
+      setSeasonMessage(null)
+    } finally {
+      setSeasonBusy(false)
+    }
+  }
 
   async function handleNewChapter() {
     if (!projectId) return
@@ -89,13 +111,31 @@ export function ProjectDetailPage() {
       </div>
 
       {error && <p className="rounded-lg border border-red-900 bg-red-950 px-3 py-2 text-sm text-red-300">{error}</p>}
+      {seasonMessage && (
+        <p className="rounded-lg border border-emerald-900 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-200">{seasonMessage}</p>
+      )}
+      {project.season_asset_path && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+          <p className="mb-2 text-xs text-zinc-500">Ultimo corte de temporada completa:</p>
+          <video src={mediaUrl(project.season_asset_path) ?? undefined} controls className="max-h-96 w-full rounded-lg bg-black" />
+        </div>
+      )}
 
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-medium">Capitulos</h2>
-          <button onClick={handleNewChapter} className="rounded-lg border border-zinc-700 px-3 py-1 text-xs hover:bg-zinc-800">
-            + Nuevo capitulo
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleRenderSeason}
+              disabled={seasonBusy || chapters.length === 0}
+              className="rounded-lg bg-violet-600 px-3 py-1 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+            >
+              {seasonBusy ? "Renderizando..." : "Renderizar temporada completa"}
+            </button>
+            <button onClick={handleNewChapter} className="rounded-lg border border-zinc-700 px-3 py-1 text-xs hover:bg-zinc-800">
+              + Nuevo capitulo
+            </button>
+          </div>
         </div>
         <ul className="divide-y divide-zinc-800 rounded-xl border border-zinc-800 bg-zinc-900">
           {chapters.map((chapter) => (

@@ -11,7 +11,7 @@ hexagonal. El plan completo, con las decisiones de arquitectura y la hoja de
 ruta por fases, vive en el doc **"Estudio IA — Arquitectura y plan de
 migración"**.
 
-## Estado: Fase 4 (Música — lyrics video / karaoke)
+## Estado: Fase 4 + huecos cerrados (prosa completa y corte de temporada)
 
 Lo que ya funciona:
 
@@ -70,12 +70,26 @@ son 100% locales y están probados end-to-end con ejecuciones reales,
 incluyendo un pipeline completo real (canción → transcripción → shots →
 fondos → video de Karaoke) en este entorno.
 
-Lo que falta (ver la hoja de ruta del doc de arquitectura): escritura de
-prosa completa de capítulos por LLM y derivación automática de la hoja de
-producción desde esa prosa, el corte de temporada completa (concatenar
-capítulos con separadores, `RenderPort.concat()`), separación de fuentes
-verificada en vivo (Demucs/instrumental para Karaoke — hoy Karaoke usa la
-pista que se suba tal cual), detección de estructura musical (BPM/
+- **Prosa completa por LLM + derivación de hoja de producción** (hueco que
+  había quedado fuera de la fase 1): "Escribir con IA" genera la prosa
+  completa de un capítulo (párrafos reales, no una lista de líneas) a
+  partir del resumen/cliffhanger de ese capítulo en el esqueleto de
+  temporada del canon; el usuario puede revisarla/corregirla en un editor
+  simple antes de "Derivar hoja de producción", que la convierte en shots
+  (tipo, personajes, escenario, prompt de imagen con tokens `[id]`,
+  movimiento de cámara, duración estimada) reutilizando el mismo LLM.
+  Simplificación deliberada: el modelo elige entre personajes/escenarios ya
+  existentes en vez de poder crear escenarios nuevos sobre la marcha.
+- **Corte de temporada completa**: un botón en la página del proyecto
+  concatena todos los capítulos ya renderizados individualmente (fase 3)
+  con separadores "Capítulo N: Título" entre cada uno y un cartel "FIN" al
+  final -- usa `RenderPort.concat()` (ffmpeg, sin recodificar), que ya
+  estaba implementado y testeado desde la fase 3 pero sin caso de uso que
+  lo invocara.
+
+Lo que falta (ver la hoja de ruta del doc de arquitectura): separación de
+fuentes verificada en vivo (Demucs/instrumental para Karaoke — hoy Karaoke
+usa la pista que se suba tal cual), detección de estructura musical (BPM/
 secciones), un editor de sincronización con forma de onda, y el videoclip
 musical animado con cast/escenarios (necesita generación narrativa por LLM
 como canon/cast, no solo transcripción).

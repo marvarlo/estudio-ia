@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.adapters.inbound.api.deps import get_provider_registry, get_repository, get_settings, resolve_adapter
+from app.adapters.inbound.api.deps import (
+    get_job_queue,
+    get_media_probe,
+    get_provider_registry,
+    get_render_port,
+    get_repository,
+    get_settings,
+    resolve_adapter,
+)
 from app.adapters.inbound.api.schemas import (
     CanonGenerateRequest,
     CanonOut,
@@ -12,15 +21,19 @@ from app.adapters.inbound.api.schemas import (
     CastGenerationOut,
     ImportRequest,
     ImportSummaryOut,
+    JobOut,
     ProjectCreateRequest,
     ProjectDetailOut,
     ProjectOut,
     VoiceOut,
 )
+from app.application.ports.job_queue import JobQueuePort
 from app.application.use_cases.import_story_project import ImportStoryProjectUseCase
 from app.application.use_cases.project_queries import GetProjectDetailUseCase, ListProjectsUseCase
+from app.application.use_cases.render_season import RenderSeasonUseCase
 from app.application.use_cases.story_generation import CreateStoryProjectUseCase, GenerateCanonUseCase, GenerateCastUseCase
 from app.application.use_cases.voice_pool import AssignVoicesUseCase
+from app.domain.jobs.entities import Job
 from app.prompts.canon import StoryBrief
 from app.prompts.cast import CastBrief
 
@@ -120,3 +133,28 @@ def assign_voices(project_id: str, repository=Depends(get_repository)) -> list[V
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return [VoiceOut.from_domain(v) for v in voices]
+
+
+@router.post("/{project_id}/season:render", response_model=JobOut)
+async def render_season(
+    project_id: str,
+    repository=Depends(get_repository),
+    render_port=Depends(get_render_port),
+    media_probe=Depends(get_media_probe),
+    queue: JobQueuePort = Depends(get_job_queue),
+) -> JobOut:
+    """Concatena todos los capitulos ya renderizados de la temporada con
+    separadores y un cierre -- requiere que cada capitulo tenga ya un
+    render seleccionado (fase 3). Puede tardar varios minutos."""
+    project = repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+    use_case = RenderSeasonUseCase(repository, render_port, media_probe)
+
+    async def run() -> dict:
+        asset = await use_case.execute(project_id)
+        return {"asset_id": asset.id, "path": str(asset.path)}
+
+    job = Job(id=str(uuid.uuid4()), project_id=project_id, kind="render_season", provider="remotion", cost_estimate=0.0)
+    job = await queue.enqueue(job, run)
+    return JobOut.from_domain(job)
